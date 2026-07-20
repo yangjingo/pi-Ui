@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+.env
+workspace/
+.pi-workspace/
+*.tsbuildinfo
+
+# verify / runtime artifacts
+*.log
+__pycache__/
+verify/**/screenshots/

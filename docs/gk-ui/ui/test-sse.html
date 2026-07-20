@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>SSE 工具执行卡片测试</title>
+<style>
+:root {
+  --bg: #faf9f5; --bg-card: #efe9de; --bg-white: #fff; --bg-soft: #f5f0e8;
+  --border: #e6dfd8; --border-soft: #ebe6df;
+  --text-body: #3d3d3a; --text-strong: #252523;
+  --text-muted: #6c6a64; --text-soft: #8e8b82;
+  --primary: #cc785c; --primary-active: #a9583e;
+  --accent-teal: #5db8a6; --accent-amber: #e8a55a;
+  --accent-blue: #569cd6; --accent-green: #5db872;
+  --success: #5db872; --error: #c64545;
+  --radius: 10px; --radius-sm: 6px;
+}
+body { font-family: Inter, sans-serif; background: var(--bg); padding: 24px; color: var(--text-body); }
+h1 { font-size: 18px; margin-bottom: 8px; }
+h2 { font-size: 14px; color: var(--text-muted); margin-bottom: 20px; }
+.main-content {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px;
+  font-size: 16px; line-height: 1.75; max-width: 700px;
+  border-bottom-left-radius: 2px;
+}
+.tools-area {
+  padding: 0; border-left: 2px solid var(--border);
+  margin-left: 12px; margin-top: 6px; max-width: 660px;
+}
+.tool-card {
+  margin: 0 0 4px 0; border-radius: var(--radius-sm);
+  background: var(--bg-white); border: 1px solid var(--border-soft);
+  font-size: 13px; position: relative; overflow: hidden;
+  animation: cardIn 0.25s ease;
+}
+.tool-card::before {
+  content: ""; position: absolute; left: -2px; top: 0; bottom: 0;
+  width: 3px; border-radius: 0 2px 2px 0;
+}
+@keyframes cardIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+.tool-card .card-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; cursor: pointer; user-select: none; min-height: 32px;
+}
+.tool-card .card-header:hover { background: rgba(0,0,0,0.02); }
+.tool-card .card-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+.tool-card .card-label { font-weight: 600; color: var(--text-strong); font-size: 12px; text-transform: uppercase; flex-shrink: 0; }
+.tool-card .card-detail { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.tool-card .card-spacer { flex: 1; }
+.tool-card .card-time { font-family: monospace; font-size: 11px; color: var(--text-soft); flex-shrink: 0; }
+.tool-card .card-status { font-size: 11px; font-weight: 500; flex-shrink: 0; padding: 1px 8px; border-radius: 9999px; background: var(--bg-soft); color: var(--text-muted); }
+.tool-card .card-expand { font-size: 10px; color: var(--text-soft); flex-shrink: 0; transition: transform 0.2s; margin-left: 2px; }
+.tool-card .card-output { display: none; font-family: monospace; font-size: 12px; line-height: 1.5; color: var(--text-soft); background: var(--bg-soft); padding: 8px 12px; border-top: 1px solid var(--border-soft); white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+.tool-card.expanded .card-output { display: block; }
+.tool-card.expanded .card-expand { transform: rotate(90deg); }
+.tool-card.amber::before{background:var(--accent-amber)}.tool-card.blue::before{background:var(--accent-blue)}
+.tool-card.teal::before{background:var(--accent-teal)}.tool-card.green::before{background:var(--accent-green)}
+.tool-card.skill::before{background:var(--primary)}
+.tool-card.running .card-status{background:rgba(232,165,90,0.1);color:var(--accent-amber)}
+.tool-card.done .card-status{background:rgba(93,184,114,0.1);color:var(--success)}
+.tool-card.running .card-icon{animation:iconBounce 1.5s ease-in-out infinite}
+@keyframes iconBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+.step-line { font-size: 14px; color: var(--text-muted); display: block; padding: 2px 0 2px 16px; position: relative; }
+.step-line::before { content: ""; position: absolute; left: 0; top: 10px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-teal); }
+.btn { padding: 8px 16px; margin: 4px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-size: 13px; }
+.btn:hover { background: #ddd; }
+</style>
+</head>
+<body>
+<h1>🧪 SSE 工具执行卡片测试</h1>
+<h2>验证工具调用以独立卡片形式展示，点击卡片展开/折叠输出</h2>
+
+<div class="main-content" id="content" style="min-height:60px"></div>
+<div class="tools-area" id="tools" style="display:none"></div>
+
+<div style="margin-top:16px">
+  <button class="btn" onclick="runTest()" style="background:var(--primary);color:#fff;border:none">▶ 运行完整测试</button>
+  <button class="btn" onclick="runQuickTest()">▶ 快速测试</button>
+  <button class="btn" onclick="reset()">↺ 重置</button>
+</div>
+<div id="log" style="margin-top:12px;font-size:13px;color:var(--text-muted)"></div>
+
+<script>
+const content = document.getElementById('content');
+const tools = document.getElementById('tools');
+const log = document.getElementById('log');
+function delay(ms){return new Promise(r=>setTimeout(r,ms))}
+
+function createToolCard(id, meta) {
+  const card = document.createElement('div');
+  card.className = `tool-card running ${meta.color}`;
+  card.dataset.toolId = id;
+  card.dataset.startTime = Date.now();
+  card.innerHTML = `
+    <div class="card-header">
+      <span class="card-icon">${meta.icon}</span>
+      <span class="card-label">${meta.label}</span>
+      <span class="card-detail">${meta.detail}</span>
+      <span class="card-spacer"></span>
+      <span class="card-time">...</span>
+      <span class="card-status">执行中</span>
+      <span class="card-expand">▸</span>
+    </div>
+    <pre class="card-output"></pre>
+  `;
+  card.querySelector('.card-header').addEventListener('click', () => card.classList.toggle('expanded'));
+  return card;
+}
+
+function completeCard(id, isError) {
+  const card = tools.querySelector(`[data-tool-id="${CSS.escape(id)}"]`);
+  if (!card) return;
+  const elapsed = card.dataset.startTime ? ((Date.now()-parseInt(card.dataset.startTime))/1000).toFixed(1) : '?';
+  card.classList.remove('running');
+  card.classList.add(isError ? 'error' : 'done');
+  card.querySelector('.card-icon').textContent = isError ? '✗' : '✓';
+  card.querySelector('.card-status').textContent = isError ? '失败' : '完成';
+  card.querySelector('.card-time').textContent = elapsed + 's';
+}
+
+async function runTest() {
+  content.innerHTML = ''; tools.innerHTML = ''; log.textContent = '';
+  content.textContent = '开始处理 task.pdf...';
+
+  await delay(500);
+  const t1 = createToolCard('t1', {icon:'⚙️',label:'Bash',detail:'python run_pipeline.py --vlm skip',color:'amber'});
+  tools.appendChild(t1); tools.style.display = 'block';
+  await delay(300);
+  t1.classList.add('expanded');
+  t1.querySelector('.card-output').textContent = 'Scanning test/ for PDFs...\nFound: 26 PDFs';
+  await delay(800);
+  t1.querySelector('.card-output').textContent += '\nParsing 84 pages, 91 tables, 143 images...';
+  await delay(600);
+  completeCard('t1', false);
+
+  await delay(200);
+  content.textContent += '\n\n解析完成！84 页，91 个表格，143 张图片。';
+
+  await delay(300);
+  const t2 = createToolCard('t2', {icon:'⚙️',label:'Bash',detail:'python run_pipeline.py --skip-parse --vlm native',color:'blue'});
+  tools.appendChild(t2);
+  await delay(1200);
+  completeCard('t2', false);
+
+  await delay(200);
+  content.textContent += '\n\nVLM 分析完成！143 个 caption 全部通过 schema 校验 ✅';
+
+  await delay(300);
+  const t3 = createToolCard('t3', {icon:'📖',label:'读取',detail:'uniex-output/result.json',color:'teal'});
+  tools.appendChild(t3);
+  await delay(400);
+  completeCard('t3', false);
+
+  await delay(200);
+  const t4 = createToolCard('t4', {icon:'⚙️',label:'Bash',detail:'python build_dashboard.py',color:'green'});
+  tools.appendChild(t4);
+  await delay(1000);
+  completeCard('t4', false);
+
+  await delay(200);
+  const t5 = createToolCard('skill-build', {icon:'🔧',label:'技能',detail:'Build Dashboard',color:'skill'});
+  tools.appendChild(t5);
+  await delay(600);
+  completeCard('skill-build', false);
+
+  content.textContent += '\n\n✅ Pipeline 全流程执行完成！';
+  log.textContent = '✅ 完整测试完成！5 个工具卡片已渲染。点击任意卡片可展开/折叠输出。';
+}
+
+async function runQuickTest() {
+  content.innerHTML = ''; tools.innerHTML = ''; log.textContent = '';
+  content.textContent = '快速测试...';
+  tools.style.display = 'block';
+
+  const t1 = createToolCard('q1', {icon:'⚙️',label:'Bash',detail:'python run_pipeline.py',color:'amber'});
+  tools.appendChild(t1); t1.classList.add('expanded');
+  t1.querySelector('.card-output').textContent = 'Output line 1\nOutput line 2';
+  await delay(600); completeCard('q1', false);
+
+  const t2 = createToolCard('q2', {icon:'🐍',label:'Python',detail:'build_dashboard.py',color:'blue'});
+  tools.appendChild(t2);
+  await delay(400); completeCard('q2', false);
+
+  content.textContent += '\n全部完成！';
+  log.textContent = '✅ 快速测试完成！点击卡片展开查看输出。';
+}
+
+function reset() {
+  content.innerHTML = ''; tools.innerHTML = '';
+  tools.style.display = 'none'; log.textContent = '';
+}
+</script>
+</body>
+</html>
