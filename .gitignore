@@ -4,11 +4,15 @@ dist-ssr
 *.local
 .vite
 .env
-workspace/
+/workspace/
+.workspace/
 .pi-workspace/
 *.tsbuildinfo
 
-# verify / runtime artifacts
+# test / runtime artifacts
 *.log
 __pycache__/
-verify/**/screenshots/
+tests/**/screenshots/
+output/
+.playwright-cli/
+.pnpm-store/

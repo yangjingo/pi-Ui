@@ -1,23 +1,36 @@
 {
   "name": "pi-ui",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
-    "start": "tsx core/pi/server.ts",
-    "typecheck": "tsc -p tsconfig.json && tsc -p core/tsconfig.json"
+    "test:boundaries": "tsx --test tests/core/source-boundaries.test.ts",
+    "check:boundaries": "pnpm test:boundaries",
+    "build": "pnpm check:boundaries && tsc -p tsconfig.json && vite build",
+    "start": "tsx src/core/pi/server.ts",
+    "typecheck": "pnpm check:boundaries && tsc -p tsconfig.json && tsc -p src/core/tsconfig.json && tsc -p tests/tsconfig.json",
+    "test": "pnpm test:modules && playwright test",
+    "test:modules": "tsx --test tests/core/*.test.ts tests/harness/*.test.ts tests/ui/*.test.ts tests/workspace/*.test.ts",
+    "test:core": "tsx --test tests/core/*.test.ts",
+    "test:harness": "tsx --test tests/harness/*.test.ts",
+    "test:ui": "tsx --test tests/ui/*.test.ts",
+    "test:workspace": "tsx --test tests/workspace/*.test.ts",
+    "test:canvas": "playwright test tests/canvas",
+    "test:e2e": "playwright test tests/e2e",
+    "verify": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.10",
     "@earendil-works/pi-coding-agent": "^0.80.10",
     "fflate": "^0.8.3",
     "mermaid": "^11.16.0",
+    "pi-codex-goal": "0.1.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@types/node": "^26.1.1",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
@@ -26,10 +39,5 @@
     "tsx": "^4.23.1",
     "typescript": "^5.5.3",
     "vite": "^5.3.4"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
   }
 }
