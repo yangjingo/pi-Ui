@@ -3,7 +3,6 @@
 
 import type { Plugin } from 'vite';
 import { createApiHandler } from './transport';
-import { runtime } from './runtime';
 
 export function piAgentPlugin(): Plugin {
   return {
@@ -12,9 +11,6 @@ export function piAgentPlugin(): Plugin {
       const api = createApiHandler();
       // Plugin middlewares install before Vite's transform/SPA-fallback, so /api/* is intercepted cleanly.
       server.middlewares.use((req, res, next) => api(req, res, next));
-      runtime.init().catch((e: any) =>
-        server.config.logger.error('[pi] runtime init failed: ' + (e?.message || e)),
-      );
     },
   };
 }

@@ -1,48 +1,76 @@
-// Prod entry: serves the built UI (dist/) + the Core API from one Node process.
-// Run with: npm run build && npm run start
+// Production server: serves the built UI and the Core API from one Node process.
+// The npm CLI supplies the package-relative UI path instead of assuming process.cwd().
 
-import { createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { join, extname } from 'node:path';
-import { runtime } from './runtime';
+import { extname, isAbsolute, relative, resolve } from 'node:path';
 import { createApiHandler } from './transport';
-
-const PORT = Number(process.env.PORT) || 4173;
-const DIST = join(process.cwd(), 'dist');
-const api = createApiHandler();
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
 };
 
-const server = createServer(async (req, res) => {
-  const url = (req.url || '/').split('?')[0];
-  if (url.startsWith('/api/')) return api(req, res);
+export interface PiUiServerOptions {
+  distDir: string;
+  host?: string;
+  port?: number;
+}
 
-  // Static file serving with SPA fallback to index.html
+function assetPath(distDir: string, requestPath: string): string | null {
   try {
-    let path = join(DIST, url === '/' ? 'index.html' : url);
-    const st = await stat(path).catch(() => null);
-    if (!st || st.isDirectory()) path = join(DIST, 'index.html');
-    const data = await readFile(path);
-    res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
-    res.end(data);
+    const decoded = decodeURIComponent(requestPath).replaceAll('\\', '/');
+    const candidate = resolve(distDir, `.${decoded === '/' ? '/index.html' : decoded}`);
+    const route = relative(distDir, candidate);
+    if (route.startsWith('..') || isAbsolute(route)) return null;
+    return candidate;
   } catch {
-    res.writeHead(404, { 'content-type': 'text/plain' });
-    res.end('Not found. Run `npm run build` first.');
+    return null;
   }
-});
+}
 
-runtime.init().catch((e: any) => console.error('[pi] runtime init failed:', e?.message || e));
+export async function startPiUiServer(options: PiUiServerOptions): Promise<Server> {
+  const distDir = resolve(options.distDir);
+  const host = options.host || '127.0.0.1';
+  const port = options.port ?? 4173;
+  const api = createApiHandler();
 
-server.listen(PORT, () => {
-  console.log(`\n  Pi workspace → http://localhost:${PORT}`);
-  console.log(`  model: ${process.env.PI_MODEL || '未配置'} · cwd: ${process.env.PI_CWD || '.workspace'}\n`);
-});
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url || '/', 'http://localhost');
+    if (url.pathname.startsWith('/api/')) return api(req, res);
+
+    const requested = assetPath(distDir, url.pathname);
+    if (!requested) {
+      res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('Invalid path');
+      return;
+    }
+
+    try {
+      let path = requested;
+      const file = await stat(path).catch(() => null);
+      if (!file || file.isDirectory()) path = resolve(distDir, 'index.html');
+      const data = await readFile(path);
+      res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
+      res.end(data);
+    } catch {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('Pi UI assets were not found. Reinstall the npm package.');
+    }
+  });
+
+  return new Promise((resolveServer, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once('error', onError);
+    server.listen(port, host, () => {
+      server.off('error', onError);
+      resolveServer(server);
+    });
+  });
+}

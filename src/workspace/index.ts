@@ -35,3 +35,5 @@ export type {
   ModelTestResult,
   UpdateModelEntry,
 } from '../core/agent/protocol';
+
+export { matchesSessionSearch, sessionDisplayId } from './sessions/search';

@@ -1,14 +1,46 @@
 {
-  "name": "pi-ui",
-  "private": true,
-  "version": "0.1.0",
+  "name": "@whyj/pi-ui",
+  "version": "0.1.1",
+  "description": "A local-first Pi agent workspace with a browser UI and one-command startup.",
   "type": "module",
+  "bin": {
+    "piUi": "bin/pi-ui.js",
+    "pi-ui": "bin/pi-ui.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "dist-node",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "pi",
+    "agent",
+    "ai",
+    "workspace",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yangjingo/pi-Ui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yangjingo/pi-Ui/issues"
+  },
+  "homepage": "https://github.com/yangjingo/pi-Ui#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite",
     "test:boundaries": "tsx --test tests/core/source-boundaries.test.ts",
     "check:boundaries": "pnpm test:boundaries",
-    "build": "pnpm check:boundaries && tsc -p tsconfig.json && vite build",
-    "start": "tsx src/core/pi/server.ts",
+    "build": "pnpm check:boundaries && tsc -p tsconfig.json && vite build && vite build --config vite.cli.config.ts",
+    "start": "node bin/pi-ui.js start --no-open",
     "typecheck": "pnpm check:boundaries && tsc -p tsconfig.json && tsc -p src/core/tsconfig.json && tsc -p tests/tsconfig.json",
     "test": "pnpm test:modules && playwright test",
     "test:modules": "tsx --test tests/core/*.test.ts tests/harness/*.test.ts tests/ui/*.test.ts tests/workspace/*.test.ts",
@@ -18,16 +50,15 @@
     "test:workspace": "tsx --test tests/workspace/*.test.ts",
     "test:canvas": "playwright test tests/canvas",
     "test:e2e": "playwright test tests/e2e",
-    "verify": "pnpm typecheck && pnpm test"
+    "verify": "pnpm typecheck && pnpm test",
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm verify"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.10",
     "@earendil-works/pi-coding-agent": "^0.80.10",
-    "fflate": "^0.8.3",
-    "mermaid": "^11.16.0",
-    "pi-codex-goal": "0.1.38",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "dotenv": "^17.4.2",
+    "pi-codex-goal": "0.1.38"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
@@ -35,7 +66,10 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "dotenv": "^17.4.2",
+    "fflate": "^0.8.3",
+    "mermaid": "^11.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.23.1",
     "typescript": "^5.5.3",
     "vite": "^5.3.4"

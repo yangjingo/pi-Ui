@@ -20,6 +20,7 @@
     "agent/types.ts",
     "pi/**/*.ts",
     "../harness/**/*.ts",
-    "../../vite.config.ts"
+    "../../vite.config.ts",
+    "../../vite.cli.config.ts"
   ]
 }

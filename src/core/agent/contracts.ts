@@ -11,6 +11,8 @@ import type {
   ModelConfigImportResult,
   ModelOption,
   ModelTestResult,
+  PiInheritancePreview,
+  RuntimeBootstrapResult,
   SessionSummary,
   SteerItem,
   TrajStep,
@@ -87,6 +89,10 @@ export interface AgentClient {
   updateModel(providerId: string, modelId: string, update: UpdateModelEntry): Promise<{ ok: boolean; error?: string; model?: string }>;
   removeCustomModel(id: string): Promise<{ ok: boolean; error?: string }>;
   setActiveModel(providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }>;
+  /** Inspect the installed Pi without applying it; returns metadata only. */
+  inspectPiInheritance(): Promise<PiInheritancePreview>;
+  /** UI-owned bootstrap choice: inherit installed Pi or initialize only local config. */
+  bootstrapRuntime(inheritPi: boolean): Promise<RuntimeBootstrapResult>;
   listSessions(): Promise<SessionSummary[]>;
   newSession(): Promise<{ ok: boolean; error?: string }>;
   switchSession(id: string): Promise<{ ok: boolean; error?: string }>;

@@ -19,6 +19,8 @@ import {
   type ModelConfigFile,
   type ModelOption,
   type ModelTestResult,
+  type PiInheritancePreview,
+  type RuntimeBootstrapResult,
   type SessionSummary,
   type SteerItem,
   type TrajStep,
@@ -34,6 +36,14 @@ import {
 import { GoalHarness } from '../../harness/goal';
 import { SkillHarness } from '../../harness/skill';
 import { createContextExtension } from './context-extension';
+import {
+  inheritedWorkingDirectory,
+  inspectPiInstallation,
+  isSessionFile,
+  loadPiSessionMessages,
+  type ManagedSessionSummary,
+  type PiInstallationInspection,
+} from './pi-installation-reader';
 
 const DEFAULT_CWD = process.env.PI_CWD || '.workspace';
 const CWD_STORE_DIR = join(process.cwd(), '.workspace', '.agentcore');
@@ -109,6 +119,15 @@ function nowTime(): string {
   const d = new Date();
   return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
 }
+function sessionTimestamp(value: Date | string | number = new Date()): string {
+  const d = value instanceof Date ? value : new Date(value);
+  const valid = Number.isNaN(d.getTime()) ? new Date() : d;
+  return [
+    valid.getFullYear(),
+    String(valid.getMonth() + 1).padStart(2, '0'),
+    String(valid.getDate()).padStart(2, '0'),
+  ].join('-') + ` ${String(valid.getHours()).padStart(2, '0')}:${String(valid.getMinutes()).padStart(2, '0')}`;
+}
 /** One-line preview of a reasoning run, for the compact traj row (full text lives on step.text). */
 function thinkPreview(text: string): string {
   const one = (text || '').replace(/\s+/g, ' ').trim();
@@ -148,10 +167,17 @@ export class PiRuntime {
   private session: any = null;
   private workspaceRoot: string = resolve(WORKSPACE_ROOT);
   private activeSessionId: string = basename(CWD);
-  private sessions: SessionSummary[] = [];
-  private summary: SessionSummary = {
-    id: this.activeSessionId, title: '新对话', group: '今天', time: nowTime(), live: true,
+  private sessions: ManagedSessionSummary[] = [];
+  private summary: ManagedSessionSummary = {
+    id: this.activeSessionId, title: '新对话', group: '今天', time: sessionTimestamp(), live: true,
   };
+  private createdFallbackSession = false;
+  private piInheritanceApplied = false;
+  private piInspection: {
+    inspection: PiInstallationInspection;
+    sessions: ManagedSessionSummary[];
+  } | null = null;
+  private bootstrapLoading: Promise<RuntimeBootstrapResult> | null = null;
   /** Finalized UI transcript, persisted alongside this session's generated files. */
   private messages: Message[] = [];
   private steps: TrajStep[] = [];
@@ -217,13 +243,37 @@ export class PiRuntime {
     return join(this.workspaceRoot, SESSION_INDEX_FILE);
   }
 
-  private nextSessionSummary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  private nextSessionSummary(overrides: Partial<ManagedSessionSummary> = {}): ManagedSessionSummary {
     return {
       id: overrides.id || newSessionId(),
       title: overrides.title || '新对话',
       group: overrides.group || '今天',
-      time: overrides.time || nowTime(),
+      time: overrides.time || sessionTimestamp(),
       live: overrides.live ?? false,
+    };
+  }
+
+  /** Upgrade older HH:mm-only indexes from their durable record/source modification time. */
+  private normalizedSessionTimestamp(id: string, value: unknown, sourcePath = '', updatedAt?: unknown): string {
+    const current = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(current)) return current;
+    const updated = new Date(typeof updatedAt === 'string' || typeof updatedAt === 'number' ? updatedAt : '');
+    if (!Number.isNaN(updated.getTime())) return sessionTimestamp(updated);
+    for (const path of [this.sessionRecordPath(id), sourcePath, this.resolveSessionPath(id)]) {
+      if (!path || !existsSync(path)) continue;
+      try { return sessionTimestamp(statSync(path).mtime); } catch { /* try the next source */ }
+    }
+    return sessionTimestamp();
+  }
+
+  private publicSessionSummary(summary: ManagedSessionSummary): SessionSummary {
+    return {
+      id: summary.id,
+      ...(summary.pi?.sourceId ? { sourceId: summary.pi.sourceId } : {}),
+      title: summary.title,
+      group: summary.group,
+      time: summary.time,
+      live: summary.live,
     };
   }
 
@@ -241,6 +291,13 @@ export class PiRuntime {
     return resolve(this.workspaceRoot, this.activeSessionId);
   }
 
+  private resolveActiveWorkingDirectory(): string {
+    const session = this.sessions.find(item => item.id === this.activeSessionId);
+    return session
+      ? inheritedWorkingDirectory(session, this.resolveActiveSessionPath())
+      : this.resolveActiveSessionPath();
+  }
+
   private resolveSessionPath(id: string): string {
     return resolve(this.workspaceRoot, id);
   }
@@ -254,7 +311,10 @@ export class PiRuntime {
   private loadSessionMessages(id: string): Message[] {
     try {
       const recordPath = this.sessionRecordPath(id);
-      if (!existsSync(recordPath) || statSync(recordPath).size > MAX_SESSION_RECORD_BYTES) return [];
+      if (!existsSync(recordPath) || statSync(recordPath).size > MAX_SESSION_RECORD_BYTES) {
+        const inherited = this.sessions.find(session => session.id === id)?.pi;
+        return inherited ? loadPiSessionMessages(inherited.forkPath || inherited.sourcePath) : [];
+      }
       const record = JSON.parse(readFileSync(recordPath, 'utf8')) as Partial<PersistedSessionRecord>;
       if (record.version !== 1 || !Array.isArray(record.messages)) return [];
       return record.messages
@@ -280,15 +340,21 @@ export class PiRuntime {
           const record = JSON.parse(readFileSync(path, 'utf8')) as Partial<PersistedSessionRecord>;
           const source = record?.summary;
           if (record.version !== 1 || !source || source.id !== entry.name) continue;
+          const modified = statSync(path).mtimeMs;
           found.push({
             summary: {
               id: entry.name,
               title: String(source.title || '').trim() || '新对话',
               group: String(source.group || '').trim() || '今天',
-              time: String(source.time || '').trim() || nowTime(),
+              time: this.normalizedSessionTimestamp(
+                entry.name,
+                source.time,
+                '',
+                record.updatedAt,
+              ),
               live: false,
             },
-            modified: statSync(path).mtimeMs,
+            modified,
           });
         } catch { /* keep scanning other session folders */ }
       }
@@ -304,7 +370,7 @@ export class PiRuntime {
       mkdirSync(dir, { recursive: true });
       const record: PersistedSessionRecord = {
         version: 1,
-        summary: { ...this.summary, live: false },
+        summary: { ...this.publicSessionSummary(this.summary), live: false },
         messages: this.messages,
         updatedAt: new Date().toISOString(),
       };
@@ -320,7 +386,7 @@ export class PiRuntime {
     this.markActiveSession();
     return {
       type: 'session_snapshot',
-      session: { ...this.summary, live: !!this.session },
+      session: { ...this.publicSessionSummary(this.summary), live: !!this.session },
       messages: this.messages.slice(),
       steers: this.steerQueue.map(entry => ({ ...entry.item })),
       goal: this.goalHarness.snapshot(this.session),
@@ -381,6 +447,7 @@ export class PiRuntime {
   private loadSessions() {
     const fallback = () => {
       const summary = this.nextSessionSummary({ id: newSessionId(), live: true });
+      this.createdFallbackSession = true;
       this.activeSessionId = summary.id;
       this.sessions = [summary];
       CWD = this.resolveActiveSessionPath();
@@ -393,16 +460,28 @@ export class PiRuntime {
       const raw = readFileSync(this.sessionIndexPath(), 'utf8');
       const data = JSON.parse(raw);
       const list = Array.isArray(data?.sessions) ? data.sessions : [];
-      const sessions: SessionSummary[] = [];
+      const sessions: ManagedSessionSummary[] = [];
       for (const item of list) {
         if (!item || typeof item !== 'object') continue;
         const id = String(item.id || '').trim();
         const title = String(item.title || '').trim() || '新对话';
         const group = String(item.group || '').trim() || '今天';
-        const time = String(item.time || '').trim() || nowTime();
         if (!id) continue;
+        const sourcePath = typeof item?.pi?.sourcePath === 'string' ? item.pi.sourcePath.trim() : '';
+        const sourceCwd = typeof item?.pi?.sourceCwd === 'string' ? item.pi.sourceCwd.trim() : '';
+        const sourceId = typeof item?.pi?.sourceId === 'string' ? item.pi.sourceId.trim() : '';
+        const forkPath = typeof item?.pi?.forkPath === 'string' ? item.pi.forkPath.trim() : '';
+        const time = this.normalizedSessionTimestamp(id, item.time, sourcePath);
         sessions.push({
           id, title, group, time, live: false,
+          ...(sourcePath && sourceCwd && sourceId ? {
+            pi: {
+              sourcePath: resolve(sourcePath),
+              sourceCwd: resolve(sourceCwd),
+              sourceId,
+              ...(forkPath ? { forkPath: resolve(forkPath) } : {}),
+            },
+          } : {}),
         });
       }
       if (!sessions.length) {
@@ -410,7 +489,7 @@ export class PiRuntime {
         if (!recovered.length) return fallback();
         this.activeSessionId = recovered[0].id;
         this.sessions = recovered;
-        CWD = this.resolveActiveSessionPath();
+        CWD = this.resolveActiveWorkingDirectory();
         this.markActiveSession();
         this.persistSessions();
         return;
@@ -421,7 +500,7 @@ export class PiRuntime {
       }
       this.activeSessionId = activeSessionId;
       this.sessions = sessions;
-      CWD = this.resolveActiveSessionPath();
+      CWD = this.resolveActiveWorkingDirectory();
       this.markActiveSession();
       mkdirSync(CWD, { recursive: true });
     } catch {
@@ -432,7 +511,7 @@ export class PiRuntime {
       }
       this.activeSessionId = recovered[0].id;
       this.sessions = recovered;
-      CWD = this.resolveActiveSessionPath();
+      CWD = this.resolveActiveWorkingDirectory();
       this.markActiveSession();
       this.persistSessions();
     }
@@ -445,7 +524,7 @@ export class PiRuntime {
     try { this.session?.dispose?.(); } catch { /* ignore */ }
     this.session = null;
     this.activeSessionId = nextSessionId;
-    CWD = this.resolveActiveSessionPath();
+    CWD = this.resolveActiveWorkingDirectory();
     this.markActiveSession();
     this.steps = [];
     this.blocks = [];
@@ -504,12 +583,107 @@ export class PiRuntime {
     for (const change of changes.files) this.emit({ type: 'file', ...change });
   }
 
+  private mergeInstalledPiSessions(discovered: ManagedSessionSummary[]): void {
+    const localCwds = new Set(
+      this.sessions
+        .filter(session => !session.pi)
+        .map(session => resolve(this.workspaceRoot, session.id).toLowerCase()),
+    );
+    const candidates = discovered.filter(session =>
+      !localCwds.has(resolve(session.pi?.sourceCwd || '').toLowerCase()));
+    const bySource = new Map(
+      this.sessions
+        .filter((session): session is ManagedSessionSummary & { pi: NonNullable<ManagedSessionSummary['pi']> } => Boolean(session.pi))
+        .map(session => [resolve(session.pi.sourcePath).toLowerCase(), session]),
+    );
+    const inherited = candidates.map(session => {
+      const existing = bySource.get(resolve(session.pi!.sourcePath).toLowerCase());
+      return existing?.pi?.forkPath
+        ? { ...session, pi: { ...session.pi!, forkPath: existing.pi.forkPath } }
+        : session;
+    });
+
+    if (this.createdFallbackSession && inherited.length) {
+      this.sessions = inherited;
+      this.activeSessionId = inherited[0].id;
+      this.createdFallbackSession = false;
+    } else {
+      const known = new Set(this.sessions.flatMap(session =>
+        session.pi ? [resolve(session.pi.sourcePath).toLowerCase()] : []));
+      this.sessions.push(...inherited.filter(session =>
+        !known.has(resolve(session.pi!.sourcePath).toLowerCase())));
+    }
+
+    this.markActiveSession();
+    CWD = this.resolveActiveWorkingDirectory();
+    this.fileHarness.reload();
+    this.messages = this.loadSessionMessages(this.activeSessionId);
+    this.persistSessions();
+  }
+
+  /** Read-only gateway. Workspace uses the safe metadata to make the bootstrap decision. */
+  async inspectPiInheritance(): Promise<PiInheritancePreview> {
+    if (!this.piInspection) this.piInspection = await inspectPiInstallation(getAgentDir());
+    return {
+      ...this.piInspection.inspection,
+      applied: this.piInheritanceApplied,
+    };
+  }
+
+  /** Execute the bootstrap choice made by the browser Workspace. */
+  async bootstrapRuntime(inheritPi: boolean): Promise<RuntimeBootstrapResult> {
+    if (this.bootstrapLoading) return this.bootstrapLoading;
+    this.bootstrapLoading = (async () => {
+      const preview = await this.inspectPiInheritance();
+      const shouldApply = inheritPi && preview.available && !this.piInheritanceApplied;
+      if (shouldApply) {
+        if (this.session?.isStreaming) {
+          return {
+            ok: false,
+            inherited: false,
+            preview,
+            error: 'Agent 正在执行，暂时不能继承 Pi 配置',
+          };
+        }
+        this.mergeInstalledPiSessions(this.piInspection?.sessions || []);
+        try { this.session?.dispose?.(); } catch { /* ignore */ }
+        this.session = null;
+        this.modelConfiguration = new CoreModelConfiguration({ inheritPi: true });
+        this.modelRuntime = undefined;
+        this.runtimeReady = false;
+        this.resolvedModel = undefined;
+        this.activeSpec = MODEL_SPEC;
+        this.initError = undefined;
+        this.piInheritanceApplied = true;
+      }
+
+      await this.init();
+      if (this.session) this.emit(this.sessionSnapshot(shouldApply ? 'session' : 'initial'));
+      const currentPreview = await this.inspectPiInheritance();
+      return {
+        ok: Boolean(this.session),
+        inherited: this.piInheritanceApplied,
+        preview: currentPreview,
+        model: this.resolvedModel || this.activeSpec || undefined,
+        error: this.initError,
+      };
+    })().finally(() => {
+      this.bootstrapLoading = null;
+    });
+    return this.bootstrapLoading;
+  }
+
   /** Bring up the Core-owned pi-ai Models runtime, but do NOT create a session yet. */
   private async ensureRuntime() {
     if (this.runtimeReady) return;
     mkdirSync(CWD, { recursive: true });
     this.modelRuntime = await this.modelConfiguration.ensureRuntime();
     this.activeSpec = this.modelConfiguration.activeSpec;
+    const inheritedThinking = this.modelConfiguration.inheritedThinkingLevel as ThinkingLevel | undefined;
+    if (this.thinkingLevel === 'off' && inheritedThinking &&
+      ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(inheritedThinking)) {
+      this.thinkingLevel = inheritedThinking;
+    }
     this.runtimeReady = true;
   }
 
@@ -519,7 +693,29 @@ export class PiRuntime {
     this.session = null;
     // Goal state is written as Pi session custom entries, so it follows the same history,
     // resume, fork, and compaction lifecycle as the agent transcript.
-    const sessionManager = SessionManager.continueRecent(CWD);
+    const active = this.sessions.find(item => item.id === this.activeSessionId);
+    let sessionManager: SessionManager;
+    if (active?.pi) {
+      const forkDirectory = join(
+        process.cwd(),
+        '.workspace',
+        '.agentcore',
+        'inherited-sessions',
+        active.id,
+      );
+      if (active.pi.forkPath && await isSessionFile(active.pi.forkPath)) {
+        sessionManager = SessionManager.open(active.pi.forkPath, forkDirectory, CWD);
+      } else {
+        if (!await isSessionFile(active.pi.sourcePath)) {
+          throw new Error('原 Pi 会话文件已不存在，无法继续该会话');
+        }
+        sessionManager = SessionManager.forkFrom(active.pi.sourcePath, CWD, forkDirectory);
+        active.pi.forkPath = sessionManager.getSessionFile();
+        this.persistSessions();
+      }
+    } else {
+      sessionManager = SessionManager.continueRecent(CWD);
+    }
     const restoredGoalLevel = this.goalHarness.thinkingLevelForGoal(
       this.goalHarness.snapshot({ sessionManager }),
     );
@@ -573,7 +769,7 @@ export class PiRuntime {
     this.activeSpec = selected.spec;
     console.log('[pi] using model:', this.resolvedModel);
     await this.createSession(selected.model);
-    this.emit({ type: 'session_start', session: this.summary });
+    this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
     this.emitGoalSnapshot();
   }
 
@@ -664,7 +860,7 @@ export class PiRuntime {
           if (this.turnMessageStartIndex >= 0) this.messages.splice(this.turnMessageStartIndex);
           this.resetTurnAccumulators();
           this.turnMessageStartIndex = -1;
-          this.summary = { ...this.summary, live: false, time: nowTime() };
+          this.summary = { ...this.summary, live: false, time: sessionTimestamp() };
           this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
           this.persistSessions();
           this.persistSessionRecord();
@@ -732,7 +928,7 @@ export class PiRuntime {
         this.resetTurnAccumulators();
         this.turnParentId = null;
         this.turnMessageStartIndex = -1;
-        this.summary = { ...this.summary, live: false, time: nowTime() };
+        this.summary = { ...this.summary, live: false, time: sessionTimestamp() };
         this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
         this.persistSessions();
         this.persistSessionRecord();
@@ -843,11 +1039,11 @@ export class PiRuntime {
         return;
       }
       if (!this.summary.title || this.summary.title === '新对话') {
-        this.summary = { ...this.summary, title: titleFrom(text), time: nowTime() };
+        this.summary = { ...this.summary, title: titleFrom(text), time: sessionTimestamp() };
         this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
         this.persistSessions();
         this.persistSessionRecord();
-        this.emit({ type: 'session_start', session: this.summary });
+        this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
       }
       this.turnParentId = this.session.sessionManager.getLeafId();
       this.persistSessionRecord();
@@ -1000,7 +1196,7 @@ export class PiRuntime {
     try { await this.createSession(selected.model); }
     catch (e: any) { return { ok: false, error: '切换失败：' + (e?.message || e) }; }
     console.log('[pi] switched model:', this.resolvedModel);
-    this.emit({ type: 'session_start', session: this.summary });
+    this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
     return { ok: true, model: this.resolvedModel };
   }
 
@@ -1070,7 +1266,7 @@ export class PiRuntime {
 
   listSessions(): SessionSummary[] {
     this.markActiveSession();
-    return [...this.sessions];
+    return this.sessions.map(session => this.publicSessionSummary(session));
   }
 
   async switchSession(id: string): Promise<boolean> {
@@ -1081,7 +1277,7 @@ export class PiRuntime {
   }
 
   async newSession() {
-    const next = this.nextSessionSummary({ id: newSessionId(), live: true, time: nowTime() });
+    const next = this.nextSessionSummary({ id: newSessionId(), live: true, time: sessionTimestamp() });
     this.sessions.unshift(next);
     this.persistSessions();
     this.switchSessionInternal(next.id, 'session');

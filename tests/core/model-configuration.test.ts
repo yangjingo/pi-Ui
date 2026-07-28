@@ -17,7 +17,7 @@ async function withTemporaryProject(run: (root: string) => Promise<void>) {
 
 test('Core owns pi-ai model definitions and credentials separately', async () => {
   await withTemporaryProject(async root => {
-    const configuration = new CoreModelConfiguration({ root, allowNetwork: false });
+    const configuration = new CoreModelConfiguration({ root, allowNetwork: false, inheritPi: false });
     await configuration.ensureRuntime();
     assert.deepEqual(
       await configuration.listModels(),
@@ -93,7 +93,7 @@ test('Core parses imported provider configuration and migrates legacy settings',
       defaultModel: 'legacy-model',
     }), 'utf8');
 
-    const configuration = new CoreModelConfiguration({ root, allowNetwork: false });
+    const configuration = new CoreModelConfiguration({ root, allowNetwork: false, inheritPi: false });
     await configuration.ensureRuntime();
     assert.equal(configuration.activeSpec, 'legacy/legacy-model');
 
@@ -131,7 +131,7 @@ test('Core parses imported provider configuration and migrates legacy settings',
 
 test('a declared SDK Provider exposes only model IDs written in Core models.json', async () => {
   await withTemporaryProject(async root => {
-    const configuration = new CoreModelConfiguration({ root, allowNetwork: false });
+    const configuration = new CoreModelConfiguration({ root, allowNetwork: false, inheritPi: false });
     await configuration.ensureRuntime();
     const saved = await configuration.saveConfigFile(JSON.stringify({
       providers: {
@@ -159,5 +159,59 @@ test('a declared SDK Provider exposes only model IDs written in Core models.json
       '声明一个内置 Provider 时也不得展开该 Provider 的 SDK 模型目录',
     );
     assert.equal(configuration.resolveModel('openai/gpt-4o'), undefined);
+  });
+});
+
+test('Core inherits an installed Pi model selection and credentials without copying secrets', async () => {
+  await withTemporaryProject(async root => {
+    const agentDir = join(root, 'installed-pi');
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(join(agentDir, 'settings.json'), JSON.stringify({
+      defaultProvider: 'existing-pi',
+      defaultModel: 'existing-model',
+      defaultThinkingLevel: 'high',
+      providers: {
+        'existing-pi': {
+          name: 'Existing Pi Provider',
+          baseUrl: 'https://pi.example/v1',
+          api: 'openai-completions',
+          models: [{
+            id: 'existing-model',
+            name: 'Existing Model',
+            api: 'openai-completions',
+            input: ['text'],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 8192,
+            maxTokens: 1024,
+          }],
+        },
+      },
+    }), 'utf8');
+    await writeFile(join(agentDir, 'auth.json'), JSON.stringify({
+      'existing-pi': { type: 'api_key', key: 'existing-secret' },
+    }), 'utf8');
+
+    const configuration = new CoreModelConfiguration({
+      root,
+      agentDir,
+      allowNetwork: false,
+      inheritPi: true,
+    });
+    await configuration.ensureRuntime();
+
+    assert.equal(configuration.activeSpec, 'existing-pi/existing-model');
+    assert.equal(configuration.inheritedThinkingLevel, 'high');
+    assert.equal(configuration.resolveModel('existing-pi/existing-model')?.id, 'existing-model');
+    const inherited = (await configuration.listModels()).find(model =>
+      model.id === 'existing-pi/existing-model');
+    assert.equal(inherited?.apiKeyConfigured, true);
+    assert.equal(inherited?.configSource, 'runtime');
+    assert.equal(inherited?.sourceLabel, 'Pi settings.json');
+    assert.equal((await configuration.selectModel('existing-pi', 'existing-model')).ok, true);
+
+    const localModels = await readFile(configuration.modelsPath, 'utf8');
+    assert.doesNotMatch(localModels, /existing-secret|existing-model/);
+    await assert.rejects(readFile(configuration.authPath, 'utf8'));
+    assert.match(await readFile(join(agentDir, 'auth.json'), 'utf8'), /existing-secret/);
   });
 });

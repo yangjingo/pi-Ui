@@ -81,9 +81,11 @@ html[data-input="pointer"] .session:active{transform:scale(.99)}
 .session.active::before{content:"";position:absolute;left:0;top:11px;bottom:11px;width:2px;border-radius:0 2px 2px 0;background:var(--stone)}
 .session .s-title{font-size:13px;font-weight:500;color:var(--content-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .session.active .s-title{color:var(--stone-strong)}
-.session .s-meta{display:flex;align-items:center;gap:6px;margin-top:2px}
-.session .s-time{font:11px var(--mono);color:var(--content-tertiary)}
+.session .s-meta{display:flex;align-items:center;gap:5px;margin-top:2px}
+.session .s-time,.session .s-id{font:11px var(--mono);color:var(--content-tertiary)}
+.session .s-time{flex:none}
 .session .s-dot{width:5px;height:5px;border-radius:50%;background:var(--success)}
+.session .s-id{position:absolute;right:10px;bottom:9px;white-space:nowrap}
 .session .s-acts{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:none;gap:2px;padding-left:16px}
 .session:hover .s-acts,.session.active .s-acts{display:flex}
 .session .s-acts button{width:24px;height:24px;border-radius:var(--radius-sm);display:grid;place-items:center;color:var(--content-tertiary)}

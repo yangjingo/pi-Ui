@@ -10,6 +10,8 @@ import type {
   ModelConfigImportResult,
   ModelOption,
   ModelTestResult,
+  PiInheritancePreview,
+  RuntimeBootstrapResult,
   SessionSummary,
   UpdateModelEntry,
   WorkspaceChange,
@@ -384,6 +386,37 @@ class BrowserAgentClient implements AgentClient {
       return { ok: true };
     } catch (error) {
       return { ok: false, error: messageOf(error) };
+    }
+  }
+
+  async inspectPiInheritance(): Promise<PiInheritancePreview> {
+    return requestJson<PiInheritancePreview>('/api/pi/inheritance', {
+      errorMessage: '无法检查本机 Pi 配置',
+    });
+  }
+
+  async bootstrapRuntime(inheritPi: boolean): Promise<RuntimeBootstrapResult> {
+    try {
+      const result = await requestJson<RuntimeBootstrapResult>('/api/runtime/bootstrap', {
+        method: 'POST',
+        body: { inheritPi },
+        errorMessage: '无法初始化 Pi Runtime',
+      });
+      await this.refreshHealth();
+      return result;
+    } catch (error) {
+      return {
+        ok: false,
+        inherited: false,
+        preview: {
+          available: false,
+          applied: false,
+          sessionCount: 0,
+          modelCount: 0,
+          hasCredentials: false,
+        },
+        error: messageOf(error),
+      };
     }
   }
 

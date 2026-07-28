@@ -116,6 +116,8 @@ export interface Session {
 /** Lightweight session descriptor for lists/drawers (no message bodies). */
 export interface SessionSummary {
   id: string;
+  /** Native provider session ID when `id` is an internal collision-safe key. */
+  sourceId?: string;
   title: string;
   group: string;
   time: string;
@@ -205,6 +207,24 @@ export interface ModelConfigFile {
   /** Safe metadata only; Core never returns auth.json content to the browser. */
   authPath: string;
   content: string;
+}
+
+/** Safe metadata returned by the Node gateway. The browser decides whether to inherit it. */
+export interface PiInheritancePreview {
+  available: boolean;
+  applied: boolean;
+  sessionCount: number;
+  modelCount: number;
+  defaultModel?: string;
+  hasCredentials: boolean;
+}
+
+export interface RuntimeBootstrapResult {
+  ok: boolean;
+  inherited: boolean;
+  preview: PiInheritancePreview;
+  model?: string;
+  error?: string;
 }
 
 export interface AppData {

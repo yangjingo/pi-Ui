@@ -105,7 +105,7 @@ const demoFiles: Array<{ file: FileNode; content: string }> = [
 
 export const emptySnapshot: SessionSnapshot = {
   type: 'session_snapshot',
-  session: { id: 'test', title: '新对话', group: '今天', time: '刚刚', live: false },
+  session: { id: 'test', title: '新对话', group: '今天', time: '2026-07-28 16:30', live: false },
   messages: [],
   steers: [],
   goal: null,
@@ -117,7 +117,7 @@ export const emptySnapshot: SessionSnapshot = {
 
 export const demoSnapshot: SessionSnapshot = {
   ...emptySnapshot,
-  session: { id: 'demo', title: 'PDF 检测报告分析', group: '今天', time: '刚刚', live: false },
+  session: { id: 'demo', title: 'PDF 检测报告分析', group: '今天', time: '2026-07-28 16:30', live: false },
   messages: demoMessages,
   files: demoFiles,
 };

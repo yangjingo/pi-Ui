@@ -10,6 +10,7 @@ import { agentClient } from '../../core/agent';
 import type { PendingAgentChange, StepRef, TurnRef, View, WorkspaceCtx, WorkspaceTab } from './types';
 import { hasWorkspaceUi, readWorkspaceUi, writeWorkspaceUi } from './persistence';
 import { workspaceChangeContext } from './pending-changes';
+import { piInheritanceService } from '../pi-inheritance/service';
 
 export type { View, WorkspaceCtx } from './types';
 
@@ -47,6 +48,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [composerDraft, setComposerDraft] = useState('');
   const [pendingAgentChanges, setPendingAgentChanges] = useState<PendingAgentChange[]>([]);
   const [sessions, setSessionsState] = useState<SessionSummary[]>([]);
+  const [piInheritanceRevision, setPiInheritanceRevision] = useState(0);
 
   const refreshSessions = useCallback(async () => {
     const list = await agentClient.listSessions();
@@ -85,7 +87,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     ? { ...st.summary, title: titleOverride }
     : (st.summary ?? { id: 'session', title: '新对话', group: '今天', time: '刚刚', live: false });
 
-  useEffect(() => { void refreshSessions(); }, [refreshSessions]);
+  useEffect(() => {
+    let active = true;
+    void refreshSessions();
+    void piInheritanceService.bootstrap().then(() => {
+      if (!active) return;
+      setPiInheritanceRevision(revision => revision + 1);
+      return refreshSessions();
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [refreshSessions]);
 
   const messages = useMemo<Message[]>(() => {
     if (!st.streaming) return st.messages;
@@ -561,7 +572,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     sessions: sessions.length ? sessions : [summary],
     activeId: summary.id,
     activeTab, canvasTab, activeStep, activeTurn, wsOpen, editing, editDirty, editSaving, editSaveError, search, view, flashMsg, composerDraft, pendingAgentChanges,
-    error: st.error, loading: !!st.loading, connectionStatus: st.connectionStatus, steerQueue: st.steerQueue, goal: st.goal, thinking, model: st.model, workspaceRoot: st.workspaceRoot, cwd: st.cwd,
+    error: st.error, loading: !!st.loading, connectionStatus: st.connectionStatus, steerQueue: st.steerQueue, goal: st.goal, thinking, model: st.model, workspaceRoot: st.workspaceRoot, cwd: st.cwd, piInheritanceRevision,
     sendMessage, steerMessage, interruptWithSteer, newChat, switchSession, renameSession, delSession,
     setSearch, setView, setWsOpen, setActiveTab, revealInFiles,
     openInCanvas, closeCanvasTab, closeOtherCanvasTabs, closeAllCanvasTabs,

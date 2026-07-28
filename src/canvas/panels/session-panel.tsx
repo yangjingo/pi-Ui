@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Icon, text } from '../../ui';
-import { useWorkspace } from '../../workspace';
+import { matchesSessionSearch, sessionDisplayId, useWorkspace } from '../../workspace';
 
 export function SessionPanel() {
   const { sessions, activeId, search, switchSession, newChat, renameSession, delSession, setSearch, setView } = useWorkspace();
@@ -11,9 +11,8 @@ export function SessionPanel() {
 
   const groups: { g: string; items: typeof sessions }[] = [];
   const order: string[] = [];
-  const filter = search.trim().toLowerCase();
   for (const s of sessions) {
-    if (filter && !s.title.toLowerCase().includes(filter)) continue;
+    if (!matchesSessionSearch(s, search)) continue;
     if (!order.includes(s.group)) { order.push(s.group); groups.push({ g: s.group, items: [] }); }
     groups[groups.length - 1].items.push(s);
   }
@@ -31,7 +30,7 @@ export function SessionPanel() {
       </div>
       <div className="side-search">
         <span className="ico"><Icon name="search" /></span>
-        <input data-testid="session-search" placeholder="搜索会话…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input data-testid="session-search" placeholder="搜索标题或 sessid…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
       <div className="session-list" data-testid="session-list">
         {groups.length === 0 && (
@@ -64,6 +63,7 @@ export function SessionPanel() {
                 <div className="s-meta">
                   {s.live && <span className="s-dot" />}
                   <span className="s-time">{s.time}</span>
+                  <span className="s-id" data-testid="session-id" title={sessionDisplayId(s)}>{sessionDisplayId(s)}</span>
                 </div>
                 {pendingDelete === s.id ? (
                   <div className="session-confirm" role="alertdialog" aria-label={`删除会话 ${s.title}`} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') setPendingDelete(null); }}>

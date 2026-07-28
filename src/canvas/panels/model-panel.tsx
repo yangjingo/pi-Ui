@@ -1,6 +1,6 @@
-// UI/UX layer — lists only models explicitly declared in Core models.json, lets
-// users edit or add an OpenAI/Anthropic-format endpoint, test it, and switch the
-// active model. All actions go through the Workspace model facade.
+// UI/UX layer — lists the models selected by the Workspace bootstrap plus local
+// Core models, and lets users test, edit, add, or activate them. All actions go
+// through Workspace facades.
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Icon, MdText, fmtMs, text } from '../../ui';
@@ -40,7 +40,7 @@ function TestResult({ result, testId }: { result: ModelTestResult; testId: strin
 }
 
 export function ModelPanel() {
-  const { model, workspaceRoot } = useWorkspace();
+  const { model, workspaceRoot, piInheritanceRevision } = useWorkspace();
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<'model' | 'environment' | 'add'>('model');
@@ -76,7 +76,7 @@ export function ModelPanel() {
     });
     setTestRes(null);
     setErr(null);
-  }, []);
+  }, [piInheritanceRevision]);
   useEffect(() => { setCwdInput(workspaceRoot || ''); }, [workspaceRoot]);
 
   const selected = useMemo(() => models.find(item => item.id === selectedId) || null, [models, selectedId]);

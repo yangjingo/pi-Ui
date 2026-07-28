@@ -10,7 +10,7 @@ import type {
   Model,
   Models,
 } from '@earendil-works/pi-ai';
-import { ModelRuntime } from '@earendil-works/pi-coding-agent';
+import { getAgentDir, ModelRuntime } from '@earendil-works/pi-coding-agent';
 import {
   existsSync,
   mkdirSync,
@@ -96,13 +96,13 @@ function providerConfigOf(entry: CustomModelEntry): ProviderConfig {
   };
 }
 
-function normalizeModelsConfig(value: unknown): ModelsConfig | null {
+function normalizeModelsConfig(value: unknown, redactCredentials = true): ModelsConfig | null {
   if (!jsonObject(value) || !jsonObject(value.providers)) return null;
   const providers: Record<string, ProviderConfig> = {};
   for (const [providerId, rawProvider] of Object.entries(value.providers)) {
     if (!providerId.trim() || !jsonObject(rawProvider)) return null;
     const provider = structuredClone(rawProvider) as Record<string, any>;
-    delete provider.apiKey;
+    if (redactCredentials) delete provider.apiKey;
     providers[providerId] = provider as ProviderConfig;
   }
   return { providers };
@@ -190,9 +190,41 @@ export class FileCredentialStore implements CredentialStore {
   }
 }
 
+/** Local writes stay project-owned while reads fall back to the user's existing Pi login. */
+class InheritedCredentialStore implements CredentialStore {
+  constructor(
+    private readonly local: FileCredentialStore,
+    private readonly inherited: FileCredentialStore,
+  ) {}
+
+  async read(providerId: string): Promise<Credential | undefined> {
+    return await this.local.read(providerId) || this.inherited.read(providerId);
+  }
+
+  async list(): Promise<readonly CredentialInfo[]> {
+    const merged = new Map<string, CredentialInfo>();
+    for (const item of await this.inherited.list()) merged.set(item.providerId, item);
+    for (const item of await this.local.list()) merged.set(item.providerId, item);
+    return [...merged.values()];
+  }
+
+  modify(
+    providerId: string,
+    fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+  ): Promise<Credential | undefined> {
+    return this.local.modify(providerId, async local => fn(local || await this.inherited.read(providerId)));
+  }
+
+  delete(providerId: string): Promise<void> {
+    return this.local.delete(providerId);
+  }
+}
+
 export interface CoreModelConfigurationOptions {
   root?: string;
   allowNetwork?: boolean;
+  agentDir?: string;
+  inheritPi?: boolean;
 }
 
 /**
@@ -206,8 +238,15 @@ export class CoreModelConfiguration {
   readonly modelsStorePath: string;
   readonly selectionPath: string;
 
-  private readonly credentials: FileCredentialStore;
+  private readonly localCredentials: FileCredentialStore;
+  private readonly credentials: CredentialStore;
   private readonly allowNetwork: boolean;
+  private readonly agentDirectory: string;
+  private readonly inheritPi: boolean;
+  private inheritedConfigValue: ModelsConfig = { providers: {} };
+  private inheritedProviderSources = new Map<string, string>();
+  private inheritedDefaultSpec = '';
+  private inheritedThinkingLevelValue: string | undefined;
   private runtimeValue: ModelRuntime | null = null;
   private activeSpecValue = DEFAULT_MODEL_SPEC;
   private prepared = false;
@@ -219,7 +258,15 @@ export class CoreModelConfiguration {
     this.authPath = join(this.coreDirectory, 'auth.json');
     this.modelsStorePath = join(this.coreDirectory, 'models-store.json');
     this.selectionPath = join(this.coreDirectory, 'active-model.json');
-    this.credentials = new FileCredentialStore(this.authPath);
+    this.agentDirectory = options.agentDir || getAgentDir();
+    this.inheritPi = options.inheritPi ?? false;
+    this.localCredentials = new FileCredentialStore(this.authPath);
+    this.credentials = this.inheritPi
+      ? new InheritedCredentialStore(
+          this.localCredentials,
+          new FileCredentialStore(join(this.agentDirectory, 'auth.json')),
+        )
+      : this.localCredentials;
     this.allowNetwork = options.allowNetwork ?? false;
   }
 
@@ -232,9 +279,57 @@ export class CoreModelConfiguration {
     return this.runtimeValue;
   }
 
+  get inheritedThinkingLevel(): string | undefined {
+    return this.inheritedThinkingLevelValue;
+  }
+
   private config(): ModelsConfig {
     const parsed = parseJson(readFileSync(this.modelsPath, 'utf8'));
     return normalizeModelsConfig(parsed.value) || { providers: {} };
+  }
+
+  private effectiveConfig(): ModelsConfig {
+    return {
+      providers: {
+        ...this.inheritedConfigValue.providers,
+        ...this.config().providers,
+      },
+    };
+  }
+
+  private configuredSpecs(): Set<string> {
+    const configured = configuredModelSpecs(this.effectiveConfig());
+    if (this.inheritedDefaultSpec) configured.add(this.inheritedDefaultSpec);
+    return configured;
+  }
+
+  private loadInheritedConfiguration(): void {
+    if (!this.inheritPi) return;
+    const providers: Record<string, ProviderConfig> = {};
+    const load = (path: string, includeDefaults: boolean) => {
+      if (!existsSync(path)) return;
+      try {
+        const value = JSON.parse(readFileSync(path, 'utf8'));
+        const config = normalizeModelsConfig(value, false);
+        if (config) {
+          for (const [providerId, provider] of Object.entries(config.providers)) {
+            providers[providerId] = provider;
+            this.inheritedProviderSources.set(providerId, `Pi ${path.endsWith('models.json') ? 'models.json' : 'settings.json'}`);
+          }
+        }
+        if (includeDefaults) {
+          const provider = cleanString(value?.defaultProvider);
+          const model = cleanString(value?.defaultModel);
+          if (provider && model) this.inheritedDefaultSpec = `${provider}/${model}`;
+          this.inheritedThinkingLevelValue = cleanString(value?.defaultThinkingLevel);
+        }
+      } catch {
+        // Existing Pi remains optional; malformed global files do not break a local setup.
+      }
+    };
+    load(join(this.agentDirectory, 'settings.json'), true);
+    load(join(this.agentDirectory, 'models.json'), false);
+    this.inheritedConfigValue = { providers };
   }
 
   private saveSelection(spec: string): void {
@@ -245,7 +340,7 @@ export class CoreModelConfiguration {
   private async migrateCredential(providerId: string, apiKey: unknown): Promise<void> {
     const key = cleanString(apiKey);
     if (!key) return;
-    await this.credentials.modify(providerId, async () => ({ type: 'api_key', key }));
+    await this.localCredentials.modify(providerId, async () => ({ type: 'api_key', key }));
   }
 
   private async migrateLegacyConfig(): Promise<ModelsConfig | null> {
@@ -272,6 +367,7 @@ export class CoreModelConfiguration {
   private async prepare(): Promise<void> {
     if (this.prepared) return;
     mkdirSync(this.coreDirectory, { recursive: true });
+    this.loadInheritedConfiguration();
 
     let existing: any;
     if (existsSync(this.modelsPath)) {
@@ -304,8 +400,11 @@ export class CoreModelConfiguration {
 
     if (existsSync(this.selectionPath)) {
       const selection = parseJson(readFileSync(this.selectionPath, 'utf8')).value;
-      this.activeSpecValue = cleanString(selection?.model) || this.activeSpecValue;
+      const selected = cleanString(selection?.model);
+      this.activeSpecValue = selected || this.activeSpecValue || this.inheritedDefaultSpec;
+      if (!selected && this.activeSpecValue) this.saveSelection(this.activeSpecValue);
     } else {
+      this.activeSpecValue = this.activeSpecValue || this.inheritedDefaultSpec;
       this.saveSelection(this.activeSpecValue);
     }
     this.prepared = true;
@@ -317,9 +416,15 @@ export class CoreModelConfiguration {
     this.runtimeValue = await ModelRuntime.create({
       credentials: this.credentials,
       modelsPath: this.modelsPath,
-      modelsStorePath: this.modelsStorePath,
+      modelsStorePath: this.inheritPi && existsSync(join(this.agentDirectory, 'models-store.json'))
+        ? join(this.agentDirectory, 'models-store.json')
+        : this.modelsStorePath,
       allowModelNetwork: this.allowNetwork,
     });
+    const localProviders = this.config().providers;
+    for (const [providerId, provider] of Object.entries(this.inheritedConfigValue.providers)) {
+      if (!localProviders[providerId]) this.runtimeValue.registerProvider(providerId, provider);
+    }
     await this.runtimeValue.refresh({ allowNetwork: this.allowNetwork });
     return this.runtimeValue;
   }
@@ -329,12 +434,13 @@ export class CoreModelConfiguration {
     if (separator < 1) return undefined;
     const providerId = spec.slice(0, separator);
     const modelId = spec.slice(separator + 1);
-    if (!configuredModelSpecs(this.config()).has(`${providerId}/${modelId}`)) return undefined;
+    const configured = this.configuredSpecs();
+    if (!configured.has(`${providerId}/${modelId}`)) return undefined;
     return this.runtime.getModel(providerId, modelId);
   }
 
   fallbackModel(): Model<Api> | undefined {
-    const configured = configuredModelSpecs(this.config());
+    const configured = this.configuredSpecs();
     const isConfigured = (model: Model<Api>) => configured.has(`${model.provider}/${model.id}`);
     return this.runtime.getAvailableSnapshot().find(isConfigured)
       || this.runtime.getModels().find(isConfigured);
@@ -342,15 +448,21 @@ export class CoreModelConfiguration {
 
   async listModels(activeSpec = this.activeSpecValue): Promise<ModelOption[]> {
     await this.ensureRuntime();
-    const config = this.config();
+    const localConfig = this.config();
+    const config = this.effectiveConfig();
     const configured = config.providers;
     const specs = configuredModelSpecs(config);
+    if (this.inheritedDefaultSpec) specs.add(this.inheritedDefaultSpec);
     const credentials = new Map((await this.credentials.list()).map(item => [item.providerId, item]));
     const candidates = this.runtime.getModels()
       .filter(model => specs.has(`${model.provider}/${model.id}`));
 
     return candidates.map((model): ModelOption => {
       const providerConfig = configured[model.provider] as any;
+      const isLocal = Boolean(localConfig.providers[model.provider]);
+      const sourceLabel = isLocal
+        ? '.workspace/.agentcore/models.json'
+        : this.inheritedProviderSources.get(model.provider) || 'Pi settings.json';
       const status = this.runtime.getProviderAuthStatus(model.provider);
       const storedCredential = credentials.get(model.provider);
       return {
@@ -358,13 +470,13 @@ export class CoreModelConfiguration {
         provider: model.provider,
         modelId: model.id,
         label: model.name || model.id,
-        custom: true,
+        custom: Boolean(providerConfig),
         active: `${model.provider}/${model.id}` === activeSpec,
         baseUrl: model.baseUrl || providerConfig?.baseUrl,
         apiKeyMasked: storedCredential ? '已安全存储' : undefined,
         apiKeyConfigured: Boolean(status?.configured || storedCredential),
-        configSource: 'core',
-        sourceLabel: '.workspace/.agentcore/models.json',
+        configSource: isLocal ? 'core' : 'runtime',
+        sourceLabel,
         format: formatOf(model.api),
       };
     }).sort((left, right) => {
@@ -588,7 +700,7 @@ export class CoreModelConfiguration {
     modelId: string,
   ): Promise<{ ok: boolean; error?: string; spec?: string; model?: Model<Api> }> {
     await this.ensureRuntime();
-    if (!configuredModelSpecs(this.config()).has(`${providerId}/${modelId}`)) {
+    if (!this.configuredSpecs().has(`${providerId}/${modelId}`)) {
       return { ok: false, error: 'Core models.json 中未声明该模型' };
     }
     const model = this.runtime.getModel(providerId, modelId);
@@ -684,7 +796,7 @@ export class CoreModelConfiguration {
     prompt = '',
   ): Promise<ModelTestResult> {
     await this.ensureRuntime();
-    if (!configuredModelSpecs(this.config()).has(`${providerId}/${modelId}`)) {
+    if (!this.configuredSpecs().has(`${providerId}/${modelId}`)) {
       return { ok: false, error: 'Core models.json 中未声明该模型' };
     }
     const model = this.runtime.getModel(providerId, modelId);

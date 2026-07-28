@@ -45,6 +45,14 @@ export function createApiHandler() {
     }
 
     try {
+      if (url === '/api/pi/inheritance' && req.method === 'GET') {
+        return json(res, 200, await runtime.inspectPiInheritance());
+      }
+      if (url === '/api/runtime/bootstrap' && req.method === 'POST') {
+        const body = await readBody(req);
+        const result = await runtime.bootstrapRuntime(Boolean(body?.inheritPi));
+        return json(res, result.ok ? 200 : 409, result);
+      }
       if (url === '/api/health' && req.method === 'GET') return json(res, 200, runtime.health);
       if (url === '/api/sessions' && req.method === 'GET') return json(res, 200, runtime.listSessions());
       if (url === '/api/skills' && req.method === 'GET') return json(res, 200, runtime.listSkills());

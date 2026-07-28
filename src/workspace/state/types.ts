@@ -34,6 +34,8 @@ export interface WorkspaceCtx {
   model: string | null;
   workspaceRoot: string | null;
   cwd: string | null;
+  /** Increments after the browser-owned Pi inheritance bootstrap completes. */
+  piInheritanceRevision: number;
   sendMessage(text: string): void;
   steerMessage(text: string): void;
   interruptWithSteer(text: string): void;

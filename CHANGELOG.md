@@ -5,6 +5,13 @@ Pi UI 的重要变更记录在此文件中。
 版本格式遵循 [Semantic Versioning](https://semver.org/)，日期使用
 `YYYY-MM-DD`。
 
+## [0.1.1] - 2026-07-28
+
+### 修复
+
+- 会话列表显示原生 Pi sessid，而非内部路由 ID；支持以任意 sessid 片段搜索。
+- 会话卡片在右下角完整显示 sessid，并以 `YYYY-MM-DD HH:mm` 显示最近活动时间。
+
 ## [0.1.0] - 2026-07-27
 
 首个正式版本。该版本将 Pi UI 整理为边界清晰、可验证的两层 Agent Workspace，
@@ -12,6 +19,12 @@ Pi UI 的重要变更记录在此文件中。
 
 ### 新增
 
+- 新增单包 npm 发布产物和 `piUi` CLI；可通过 `npx @whyj/pi-ui install` 一键初始化并启动
+  本地 Workspace，并使用 `piUi doctor` 检查运行环境。
+- Workspace 的浏览器启动流程自动继承本机已有 Pi 的模型、认证和历史 Session；Core
+  启动本身不自动接管，继续历史会话时在 UI 私有目录创建分支。
+- Session 列表以 `YYYY-MM-DD HH:mm (sessid)` 单行完整展示原生 Pi 会话 ID，并支持
+  使用任意较短的 sessid 片段搜索。
 - 建立 `core`、`harness`、`ui`、`canvas`、`workspace` 五个源码模块，以及与其边界
   对齐的测试目录。
 - 新增 Context、File、Goal、Skill 四类 Harness，分别管理稳定上下文、文件产物、
@@ -50,4 +63,5 @@ Pi UI 的重要变更记录在此文件中。
 - 移除独立的产物 Manifest 视觉组件；文件产物直接使用现有 Agent Flow 步骤。
 - 移除 Agent 输出卡片下无意义的编辑操作，以及 Goal 专属的重复状态组件。
 
+[0.1.1]: https://github.com/yangjingo/pi-Ui/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yangjingo/pi-Ui/releases/tag/v0.1.0

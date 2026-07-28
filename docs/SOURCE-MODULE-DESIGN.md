@@ -164,9 +164,9 @@ Canvas 中的组件可以有本地展示状态，但不能成为业务数据的�
 
 Workspace 是 Canvas 与 Core 之间唯一的浏览器业务层。
 
-模型目录是一个刻意收紧的例外：Workspace 不合并、缓存或展示 Pi SDK 的内置
-Provider/模型。UI 可见集合严格来自 Core `models.json` 中的显式声明；Workspace 的
-`models` service 只是 HTTP facade。
+模型目录是一个刻意收紧的例外：Workspace 不读取凭据或直接解析 Pi 的服务端文件，也不
+枚举 Pi SDK 的全部内置 Provider。Workspace 拥有继承的启动决策，通过浏览器 Agent
+gateway 请求安全元数据并明确提交是否继承；Core 只执行受保护的文件读取和 Session fork。
 
 ## 4. Dependency direction
 
