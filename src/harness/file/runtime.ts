@@ -16,7 +16,9 @@ import {
 } from '../../core/agent/protocol';
 import { extractOfficePreview, isOfficeFile, isOfficeWorkbookFile } from './office';
 
-export const MAX_WORKSPACE_OFFICE_BYTES = 20 * 1024 * 1024;
+export const MAX_WORKSPACE_OFFICE_BYTES = 50 * 1024 * 1024;
+export const MAX_BINARY_BYTES = 100 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 export const MAX_CANVAS_RAW_BYTES = 20 * 1024 * 1024;
 
 const CANVAS_BINARY_CONTENT_TYPES: Record<string, string> = {
@@ -31,7 +33,7 @@ const CANVAS_BINARY_CONTENT_TYPES: Record<string, string> = {
 
 const MAX_WORKSPACE_FILES = 500;
 const MAX_WORKSPACE_FILE_BYTES = 2 * 1024 * 1024;
-const MAX_WORKSPACE_TOTAL_BYTES = 64 * 1024 * 1024;
+const MAX_WORKSPACE_TOTAL_BYTES = 256 * 1024 * 1024;
 const IGNORED_WORKSPACE_DIRS = new Set(['.git', '.pi-workspace', 'node_modules', 'dist', 'build', '.next', 'coverage']);
 const TEXT_FILE_NAMES = new Set(['dockerfile', 'makefile', 'procfile', 'license']);
 const TEXT_FILE_EXTENSIONS = new Set([
@@ -150,7 +152,8 @@ function artifactForPath(path: string): Artifact {
 
 function safeWorkspacePreview(name: string, abs: string, st: { size: number; mtimeMs: number }, allowPreview = true): string {
   const previewable = isWorkspaceTextFile(name) || isOfficeWorkbookFile(name);
-  const limit = isOfficeFile(name) ? MAX_WORKSPACE_OFFICE_BYTES : MAX_WORKSPACE_FILE_BYTES;
+  const ft = fileTypeOf(name);
+  const limit = ft === 'binary' ? MAX_BINARY_BYTES : (isOfficeFile(name) || ft === 'pdf') ? MAX_WORKSPACE_OFFICE_BYTES : ft === 'png' ? MAX_IMAGE_BYTES : MAX_WORKSPACE_FILE_BYTES;
   if (!allowPreview || !previewable || st.size > limit) return binaryFileNotice(name, st.size, st.mtimeMs);
   try {
     const raw = readFileSync(abs);
@@ -208,7 +211,8 @@ export class FileHarness {
         try {
           const st = statSync(abs);
           const previewable = isWorkspaceTextFile(entry.name) || isOfficeWorkbookFile(entry.name);
-          const limit = isOfficeFile(entry.name) ? MAX_WORKSPACE_OFFICE_BYTES : MAX_WORKSPACE_FILE_BYTES;
+          const ft2 = fileTypeOf(entry.name);
+          const limit = ft2 === 'binary' ? MAX_BINARY_BYTES : (isOfficeFile(entry.name) || ft2 === 'pdf') ? MAX_WORKSPACE_OFFICE_BYTES : ft2 === 'png' ? MAX_IMAGE_BYTES : MAX_WORKSPACE_FILE_BYTES;
           const mayRead = previewable && st.size <= limit && totalBytes + st.size <= MAX_WORKSPACE_TOTAL_BYTES;
           next.set(rel.replace(/\\/g, '/'), safeWorkspacePreview(entry.name, abs, st, mayRead));
           if (mayRead) totalBytes += st.size;
@@ -239,10 +243,12 @@ export class FileHarness {
 
   importOffice(path: string, data: string): FileWriteResult {
     try {
-      if (!isOfficeFile(path)) return { ok: false, error: '请选择受支持的 Office 文件' };
+      const ft = fileTypeOf(path);
+      if (!isOfficeFile(path) && !['pdf', 'png', 'binary'].includes(ft)) return { ok: false, error: '不支持的文件类型，仅支持图片、PDF、压缩包和 Office 文档' };
       const raw = Buffer.from(data || '', 'base64');
       if (!raw.length) return { ok: false, error: '文件内容为空' };
-      if (raw.length > MAX_WORKSPACE_OFFICE_BYTES) return { ok: false, error: 'Office 文件不能超过 20MB' };
+      const maxBytes = ft === 'binary' ? MAX_BINARY_BYTES : (ft === 'pdf' || isOfficeFile(path)) ? MAX_WORKSPACE_OFFICE_BYTES : MAX_IMAGE_BYTES;
+      if (raw.length > maxBytes) return { ok: false, error: `文件不能超过 ${maxBytes / (1024 * 1024)}MB` };
       const target = this.resolveFile(path);
       writeFileSync(target.abs, raw);
       const imported = this.capture(target.rel);

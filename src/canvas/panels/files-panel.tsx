@@ -81,7 +81,7 @@ export function FilesPanel({ active: visible, query, setQuery, importer }: Works
         data-testid="ws-file-input"
         type="file"
         multiple
-        accept=".md,.markdown,.txt,.csv,.tsv,.html,.htm,.json,.docx,.docm,.dotx,.dotm,.xlsx,.xlsm,.xltx,.xltm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,text/*"
+        accept=".md,.markdown,.txt,.csv,.tsv,.html,.htm,.json,.docx,.docm,.dotx,.dotm,.xlsx,.xlsm,.xltx,.xltm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.png,.jpg,.jpeg,.gif,.svg,.webp,.pdf,.zip,.tar,.gz,.tgz,.bz2,.7z,.xz,text/*"
         onChange={(event) => {
           void importer.ingestFiles(Array.from(event.currentTarget.files || []));
           event.currentTarget.value = '';

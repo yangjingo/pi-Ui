@@ -736,7 +736,7 @@ function Composer({
           data-testid="composer-file-input"
           type="file"
           multiple
-          accept=".md,.markdown,.txt,.csv,.tsv,.html,.htm,.json,.py,.js,.ts,.tsx,.jsx,.css,.yml,.yaml,.toml,.docx,.docm,.dotx,.dotm,.xlsx,.xlsm,.xltx,.xltm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,text/*"
+          accept=".md,.markdown,.txt,.csv,.tsv,.html,.htm,.json,.py,.js,.ts,.tsx,.jsx,.css,.yml,.yaml,.toml,.docx,.docm,.dotx,.dotm,.xlsx,.xlsm,.xltx,.xltm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.png,.jpg,.jpeg,.gif,.svg,.webp,.pdf,.zip,.tar,.gz,.tgz,.bz2,.7z,.xz,text/*"
           hidden
           onChange={(e) => {
             void attachFiles(Array.from(e.target.files || []));

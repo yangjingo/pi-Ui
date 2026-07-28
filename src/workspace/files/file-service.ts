@@ -23,7 +23,9 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 export async function importWorkspaceFile(file: File): Promise<{ ok: boolean; error?: string; file?: ImportedWorkspaceFile }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const result = isOfficeFile(file.name)
+  const type = fileTypeOf(file.name);
+  const isBinaryImport = isOfficeFile(file.name) || type === 'pdf' || type === 'png' || type === 'binary';
+  const result = isBinaryImport
     ? await agentClient.importFile(file.name, bytesToBase64(bytes))
     : bytes.includes(0)
       ? { ok: false, error: 'unsupported binary' }

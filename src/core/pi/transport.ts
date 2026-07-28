@@ -34,13 +34,20 @@ export function createApiHandler() {
         connection: 'keep-alive',
         'x-accel-buffering': 'no',
       });
+      res.on('error', () => {});
       res.write(': stream open\n\n');
       // Hydrate every new/reconnected browser with one authoritative session atomically:
       // transcript, generated artifacts and their previews all belong to the same session dir.
       res.write('data: ' + JSON.stringify(runtime.sessionSnapshot('initial')) + '\n\n');
-      const unsub = runtime.on((e) => res.write('data: ' + JSON.stringify(e) + '\n\n'));
-      const ping = setInterval(() => res.write(': ping\n\n'), 25000);
-      req.on('close', () => { unsub(); clearInterval(ping); });
+      let closed = false;
+      const safeWrite = (data: string) => { if (!closed && res.writable) res.write(data); };
+      const unsub = runtime.on((e) => safeWrite('data: ' + JSON.stringify(e) + '\n\n'));
+      const ping = setInterval(() => safeWrite(': ping\n\n'), 25000);
+      req.on('close', () => {
+        closed = true;
+        unsub();
+        clearInterval(ping);
+      });
       return;
     }
 
