@@ -234,6 +234,49 @@ function printDoctor(report: DoctorReport): void {
   console.log(`  auth.json: ${report.workspace.authConfigFound ? 'found' : 'not configured'}`);
 }
 
+/**
+ * Normalize proxy environment variables so undici's EnvHttpProxyAgent reads
+ * consistent values. Undici checks lowercase keys first (http_proxy, https_proxy).
+ * SSH sessions may inject loopback proxy variables that don't support long-lived
+ * HTTPS streaming. When both a corporate proxy and a local proxy are present,
+ * prefer the corporate one for HTTPS traffic so model API streams are stable.
+ */
+function sanitizeProxyEnv(): void {
+  // Collect proxy values from all naming variants.
+  const httpCandidates: string[] = [];
+  const httpsCandidates: string[] = [];
+  const isValidUrl = (raw: string) => {
+    try { const u = new URL(raw); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; }
+  };
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!value) continue;
+    const lower = key.toLowerCase();
+    const trimmed = value.trim();
+    if (!trimmed || !isValidUrl(trimmed)) continue;
+    if (lower === 'http_proxy') httpCandidates.push(trimmed);
+    else if (lower === 'https_proxy') httpsCandidates.push(trimmed);
+  }
+  // Prefer the first non-loopback proxy for each protocol.
+  const pick = (list: string[]) => {
+    const external = list.find(p => {
+      try { const h = new URL(p).hostname; return h !== '127.0.0.1' && h !== 'localhost' && h !== '::1'; } catch { return false; }
+    });
+    return external || list[0];
+  };
+  const httpProxy = pick(httpCandidates);
+  const httpsProxy = pick(httpsCandidates);
+  if (httpsProxy) {
+    // Ensure undici's first-lookup (lowercase) gets the stable corporate proxy
+    // for HTTPS model API streaming.
+    process.env.https_proxy = httpsProxy;
+    process.env.HTTPS_PROXY = httpsProxy;
+  }
+  if (httpProxy) {
+    process.env.http_proxy = httpProxy;
+    process.env.HTTP_PROXY = httpProxy;
+  }
+}
+
 function openBrowser(url: string): void {
   const launcher = process.platform === 'win32'
     ? { command: 'cmd', args: ['/c', 'start', '', url] }
@@ -261,6 +304,21 @@ async function start(options: CliOptions, installing: boolean): Promise<void> {
   if (!await canAccess(resolve(distDir, 'index.html'), constants.R_OK)) {
     throw new Error('Bundled UI assets are missing. Reinstall pi-ui.');
   }
+
+  // Normalize proxy environment variables so undici resolves the right proxy for
+  // HTTPS model API streaming. SSH sessions may inject loopback proxies that don't
+  // support long-lived streaming; prefer the corporate proxy when both are present.
+  sanitizeProxyEnv();
+
+  // Prevent the process from crashing on unhandled exceptions during SSE streaming.
+  // Log the error so it's visible but keep the server alive for client retries.
+  process.on('uncaughtException', (error) => {
+    console.error('[pi] uncaughtException:', error?.message || String(error));
+    if (error?.stack) console.error(error.stack);
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('[pi] unhandledRejection:', (reason as any)?.message || String(reason));
+  });
 
   const { startPiUiServer } = await import('./server');
   await startPiUiServer({

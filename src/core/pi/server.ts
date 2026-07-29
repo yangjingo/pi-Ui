@@ -42,17 +42,17 @@ export async function startPiUiServer(options: PiUiServerOptions): Promise<Serve
   const api = createApiHandler();
 
   const server = createServer(async (req, res) => {
-    const url = new URL(req.url || '/', 'http://localhost');
-    if (url.pathname.startsWith('/api/')) return api(req, res);
-
-    const requested = assetPath(distDir, url.pathname);
-    if (!requested) {
-      res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('Invalid path');
-      return;
-    }
-
     try {
+      const url = new URL(req.url || '/', 'http://localhost');
+      if (url.pathname.startsWith('/api/')) return api(req, res);
+
+      const requested = assetPath(distDir, url.pathname);
+      if (!requested) {
+        res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end('Invalid path');
+        return;
+      }
+
       let path = requested;
       const file = await stat(path).catch(() => null);
       if (!file || file.isDirectory()) path = resolve(distDir, 'index.html');
@@ -60,8 +60,10 @@ export async function startPiUiServer(options: PiUiServerOptions): Promise<Serve
       res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
       res.end(data);
     } catch {
-      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('Pi UI assets were not found. Reinstall the npm package.');
+      if (!res.headersSent) {
+        res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end('Internal server error');
+      }
     }
   });
 

@@ -774,167 +774,174 @@ export class PiRuntime {
   }
 
   private handle(ev: any) {
-    switch (ev?.type) {
-      case 'message_start': {
-        if (ev.message?.role !== 'user') break;
-        const index = this.steerQueue.findIndex(entry => entry.modelText === this.piMessageText(ev.message));
-        if (index < 0) break;
-        const [entry] = this.steerQueue.splice(index, 1);
-        this.messages.push(entry.message);
-        this.persistSessionRecord();
-        this.emit({ type: 'steer_delivered', id: entry.item.id, message: entry.message });
-        break;
-      }
-      case 'message_update': {
-        const ame = ev.assistantMessageEvent;
-        if (ame?.type === 'thinking_delta' && ame.delta) {
-          if (!this.firstTokenAt) this.firstTokenAt = Date.now();
-          this.thinkingBuf += ame.delta;
-          // Reasoning is interleaved into the trajectory as a 'think' step at the position it
-          // occurs relative to tool calls (and streamed live), not bucketed into a separate block.
-          const last = this.steps[this.steps.length - 1];
-          if (last && last.t === 'think' && last.status === 'running') {
-            last.text = (last.text || '') + ame.delta;
-            last.det = thinkPreview(last.text);
-            this.emit({ type: 'tool_update', step: { ...last } });
-          } else {
-            const step: TrajStep = { t: 'think', title: '思考', det: thinkPreview(ame.delta), text: ame.delta, status: 'running', time: nowTime() };
-            this.steps.push(step);
-            this.blocks.push({ kind: 'step', step: this.steps.length - 1 });
-            this.emit({ type: 'tool_start', step });
+    try {
+      switch (ev?.type) {
+        case 'message_start': {
+          if (ev.message?.role !== 'user') break;
+          const index = this.steerQueue.findIndex(entry => entry.modelText === this.piMessageText(ev.message));
+          if (index < 0) break;
+          const [entry] = this.steerQueue.splice(index, 1);
+          this.messages.push(entry.message);
+          this.persistSessionRecord();
+          this.emit({ type: 'steer_delivered', id: entry.item.id, message: entry.message });
+          break;
+        }
+        case 'message_update': {
+          const ame = ev.assistantMessageEvent;
+          if (ame?.type === 'thinking_delta' && ame.delta) {
+            if (!this.firstTokenAt) this.firstTokenAt = Date.now();
+            this.thinkingBuf += ame.delta;
+            // Reasoning is interleaved into the trajectory as a 'think' step at the position it
+            // occurs relative to tool calls (and streamed live), not bucketed into a separate block.
+            const last = this.steps[this.steps.length - 1];
+            if (last && last.t === 'think' && last.status === 'running') {
+              last.text = (last.text || '') + ame.delta;
+              last.det = thinkPreview(last.text);
+              this.emit({ type: 'tool_update', step: { ...last } });
+            } else {
+              const step: TrajStep = { t: 'think', title: '思考', det: thinkPreview(ame.delta), text: ame.delta, status: 'running', time: nowTime() };
+              this.steps.push(step);
+              this.blocks.push({ kind: 'step', step: this.steps.length - 1 });
+              this.emit({ type: 'tool_start', step });
+            }
+          } else if (ame?.type === 'text_delta' && ame.delta) {
+            if (!this.firstTokenAt) this.firstTokenAt = Date.now();
+            this.textBuf += ame.delta;
+            const last = this.blocks[this.blocks.length - 1];
+            if (last?.kind === 'text') last.text += ame.delta;
+            else this.blocks.push({ kind: 'text', text: ame.delta });
+            this.emit({ type: 'text_delta', delta: ame.delta });
           }
-        } else if (ame?.type === 'text_delta' && ame.delta) {
-          if (!this.firstTokenAt) this.firstTokenAt = Date.now();
-          this.textBuf += ame.delta;
-          const last = this.blocks[this.blocks.length - 1];
-          if (last?.kind === 'text') last.text += ame.delta;
-          else this.blocks.push({ kind: 'text', text: ame.delta });
-          this.emit({ type: 'text_delta', delta: ame.delta });
+          break;
         }
-        break;
-      }
-      case 'tool_execution_start': {
-        this.closeRunningThink();
-        const goalTrajectory = this.goalHarness.trajectoryStart(ev.toolName, ev.args);
-        const step: TrajStep = {
-          id: ev.toolCallId,
-          t: goalTrajectory ? 'goal' : mapPiTool(ev.toolName),
-          title: goalTrajectory?.title || TOOL_TITLE[ev.toolName] || ev.toolName || '工具',
-          det: goalTrajectory?.detail || summarizeArgs(ev.args),
-          in: goalTrajectory?.input || (() => { try { return JSON.stringify(ev.args); } catch { return undefined; } })(),
-          status: 'running',
-          time: nowTime(),
-          file: ev.args?.path || ev.args?.file_path || ev.args?.filePath,
-        };
-        this.steps.push(step);
-        this.blocks.push({ kind: 'step', step: this.steps.length - 1 });
-        // remember the target path: tool_execution_end carries no args, only a result
-        if ((ev.toolName === 'write' || ev.toolName === 'edit') && step.file) {
-          this.pendingFiles.set(ev.toolCallId, step.file);
+        case 'tool_execution_start': {
+          this.closeRunningThink();
+          const goalTrajectory = this.goalHarness.trajectoryStart(ev.toolName, ev.args);
+          const step: TrajStep = {
+            id: ev.toolCallId,
+            t: goalTrajectory ? 'goal' : mapPiTool(ev.toolName),
+            title: goalTrajectory?.title || TOOL_TITLE[ev.toolName] || ev.toolName || '工具',
+            det: goalTrajectory?.detail || summarizeArgs(ev.args),
+            in: goalTrajectory?.input || (() => { try { return JSON.stringify(ev.args); } catch { return undefined; } })(),
+            status: 'running',
+            time: nowTime(),
+            file: ev.args?.path || ev.args?.file_path || ev.args?.filePath,
+          };
+          this.steps.push(step);
+          this.blocks.push({ kind: 'step', step: this.steps.length - 1 });
+          // remember the target path: tool_execution_end carries no args, only a result
+          if ((ev.toolName === 'write' || ev.toolName === 'edit') && step.file) {
+            this.pendingFiles.set(ev.toolCallId, step.file);
+          }
+          this.emit({ type: 'tool_start', step });
+          break;
         }
-        this.emit({ type: 'tool_start', step });
-        break;
-      }
-      case 'tool_execution_end': {
-        const step = (ev.toolCallId && this.steps.find(item => item.id === ev.toolCallId))
-          || this.steps[this.steps.length - 1];
-        if (step) {
-          const goalTrajectory = this.goalHarness.trajectoryEnd(ev.toolName, ev.result, ev.isError);
-          step.status = 'done';
-          step.det = goalTrajectory?.detail || step.det;
-          step.out = goalTrajectory?.output || summarizeResult(ev.result, ev.isError);
-          this.emit({ type: 'tool_end', step });
+        case 'tool_execution_end': {
+          const step = (ev.toolCallId && this.steps.find(item => item.id === ev.toolCallId))
+            || this.steps[this.steps.length - 1];
+          if (step) {
+            const goalTrajectory = this.goalHarness.trajectoryEnd(ev.toolName, ev.result, ev.isError);
+            step.status = 'done';
+            step.det = goalTrajectory?.detail || step.det;
+            step.out = goalTrajectory?.output || summarizeResult(ev.result, ev.isError);
+            this.emit({ type: 'tool_end', step });
+          }
+          const pending = this.pendingFiles.get(ev.toolCallId);
+          this.pendingFiles.delete(ev.toolCallId);
+          if (pending) this.captureFile(pending);
+          // write/edit are captured precisely above; bash may create, rewrite, rename, or remove
+          // any number of workspace files, so reconcile the bounded session root after it ends.
+          if (step?.t === 'write' || step?.t === 'code') this.syncWorkspaceFilesAfterTool();
+          break;
         }
-        const pending = this.pendingFiles.get(ev.toolCallId);
-        this.pendingFiles.delete(ev.toolCallId);
-        if (pending) this.captureFile(pending);
-        // write/edit are captured precisely above; bash may create, rewrite, rename, or remove
-        // any number of workspace files, so reconcile the bounded session root after it ends.
-        if (step?.t === 'write' || step?.t === 'code') this.syncWorkspaceFilesAfterTool();
-        break;
-      }
-      case 'agent_end': {
-        if (this.interrupting) {
-          // The previous prompt is intentionally abandoned. Its partial response must not
-          // become the user-visible answer or contaminate the new active branch.
-          if (this.turnMessageStartIndex >= 0) this.messages.splice(this.turnMessageStartIndex);
+        case 'agent_end': {
+          if (this.interrupting) {
+            // The previous prompt is intentionally abandoned. Its partial response must not
+            // become the user-visible answer or contaminate the new active branch.
+            if (this.turnMessageStartIndex >= 0) this.messages.splice(this.turnMessageStartIndex);
+            this.resetTurnAccumulators();
+            this.turnMessageStartIndex = -1;
+            this.summary = { ...this.summary, live: false, time: sessionTimestamp() };
+            this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
+            this.persistSessions();
+            this.persistSessionRecord();
+            this.emit({ type: 'turn_interrupted' });
+            break;
+          }
+          this.closeRunningThink();
+          // The final filesystem state is the source of truth for a turn's output list. This
+          // catches deletion/rename work performed by shell tools immediately before the turn
+          // closes, even if the tool's individual completion event was incomplete.
+          this.syncWorkspaceFilesAfterTool();
+          const responseUsage = this.contextHarness.responseUsage(ev.messages || []);
+          this.goalHarness.recordAgentLoop(this.session, Math.floor(Date.now() / 1000), {
+            thinkingSteps: this.steps.filter(step => step.t === 'think').length,
+            toolCalls: this.steps.filter(step => step.t !== 'think').length,
+          });
+          this.emitGoalBudgetReport(responseUsage);
+          const artifacts: Artifact[] = this.fileHarness.finalArtifacts();
+          const presentedOutput = this.fileHarness.projectAgentOutput(this.textBuf, this.blocks, artifacts);
+          const completedGoal = this.goalHarness.snapshot(this.session);
+          const trajectory = completedGoal?.status === 'complete'
+            ? this.goalHarness.projectCompletedTrajectory(
+                this.steps,
+                completedGoal,
+                this.goalHarness.executionMetrics(this.session, completedGoal.goalId),
+              )
+            : this.steps.slice();
+          // TTFT / TPOT use local timing; every token field comes directly from pi-ai's
+          // normalized assistant response metadata.
+          const { input, output, cacheRead, cacheWrite, cacheWrite1h, totalTokens } = responseUsage;
+          const currentPrefix = this.contextPrefixSnapshot();
+          const contextMetrics = this.contextHarness.turnMetrics(
+            { input, cacheRead, cacheWrite },
+            currentPrefix,
+            this.contextPrefixBaseline || currentPrefix,
+          );
+          const now = Date.now();
+          const ttft = this.firstTokenAt && this.turnStart ? this.firstTokenAt - this.turnStart : 0;
+          const duration = this.turnStart ? now - this.turnStart : 0;
+          const genTime = this.firstTokenAt ? now - this.firstTokenAt : duration;
+          const message: Message = {
+            role: 'agent',
+            status: 'done',
+            intro: presentedOutput.text.trim() || undefined,
+            thinking: this.thinkingBuf || undefined,
+            traj: trajectory,
+            blocks: presentedOutput.blocks,
+            artifacts,
+            stats: {
+              ttft,
+              tpot: output > 0 ? genTime / output : 0,
+              duration,
+              input,
+              output,
+              cacheWrite1h,
+              totalTokens,
+              ...contextMetrics,
+            },
+          };
+          this.messages.push(message);
+          this.persistSessionRecord();
+          this.emit({ type: 'agent_end', message });
+          this.emitGoalSnapshot();
+          // reset per-turn accumulators; the finalized message is now the UI's record
           this.resetTurnAccumulators();
+          this.turnParentId = null;
           this.turnMessageStartIndex = -1;
           this.summary = { ...this.summary, live: false, time: sessionTimestamp() };
           this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
           this.persistSessions();
           this.persistSessionRecord();
-          this.emit({ type: 'turn_interrupted' });
           break;
         }
-        this.closeRunningThink();
-        // The final filesystem state is the source of truth for a turn's output list. This
-        // catches deletion/rename work performed by shell tools immediately before the turn
-        // closes, even if the tool's individual completion event was incomplete.
-        this.syncWorkspaceFilesAfterTool();
-        const responseUsage = this.contextHarness.responseUsage(ev.messages || []);
-        this.goalHarness.recordAgentLoop(this.session, Math.floor(Date.now() / 1000), {
-          thinkingSteps: this.steps.filter(step => step.t === 'think').length,
-          toolCalls: this.steps.filter(step => step.t !== 'think').length,
-        });
-        this.emitGoalBudgetReport(responseUsage);
-        const artifacts: Artifact[] = this.fileHarness.finalArtifacts();
-        const presentedOutput = this.fileHarness.projectAgentOutput(this.textBuf, this.blocks, artifacts);
-        const completedGoal = this.goalHarness.snapshot(this.session);
-        const trajectory = completedGoal?.status === 'complete'
-          ? this.goalHarness.projectCompletedTrajectory(
-              this.steps,
-              completedGoal,
-              this.goalHarness.executionMetrics(this.session, completedGoal.goalId),
-            )
-          : this.steps.slice();
-        // TTFT / TPOT use local timing; every token field comes directly from pi-ai's
-        // normalized assistant response metadata.
-        const { input, output, cacheRead, cacheWrite, cacheWrite1h, totalTokens } = responseUsage;
-        const currentPrefix = this.contextPrefixSnapshot();
-        const contextMetrics = this.contextHarness.turnMetrics(
-          { input, cacheRead, cacheWrite },
-          currentPrefix,
-          this.contextPrefixBaseline || currentPrefix,
-        );
-        const now = Date.now();
-        const ttft = this.firstTokenAt && this.turnStart ? this.firstTokenAt - this.turnStart : 0;
-        const duration = this.turnStart ? now - this.turnStart : 0;
-        const genTime = this.firstTokenAt ? now - this.firstTokenAt : duration;
-        const message: Message = {
-          role: 'agent',
-          status: 'done',
-          intro: presentedOutput.text.trim() || undefined,
-          thinking: this.thinkingBuf || undefined,
-          traj: trajectory,
-          blocks: presentedOutput.blocks,
-          artifacts,
-          stats: {
-            ttft,
-            tpot: output > 0 ? genTime / output : 0,
-            duration,
-            input,
-            output,
-            cacheWrite1h,
-            totalTokens,
-            ...contextMetrics,
-          },
-        };
-        this.messages.push(message);
-        this.persistSessionRecord();
-        this.emit({ type: 'agent_end', message });
-        this.emitGoalSnapshot();
-        // reset per-turn accumulators; the finalized message is now the UI's record
-        this.resetTurnAccumulators();
-        this.turnParentId = null;
-        this.turnMessageStartIndex = -1;
-        this.summary = { ...this.summary, live: false, time: sessionTimestamp() };
-        this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
-        this.persistSessions();
-        this.persistSessionRecord();
-        break;
+        default: break;
       }
-      default: break;
+    } catch (err: any) {
+      console.error('[pi] handle error:', err?.message || String(err));
+      // Emit the error so the UI can display it, but do not rethrow — the agent loop
+      // must keep running so subsequent tool results and agent_end can still arrive.
+      try { this.emit({ type: 'error', message: 'Agent 内部处理异常：' + (err?.message || String(err)) }); } catch { /* swallow */ }
     }
   }
 
@@ -1129,7 +1136,7 @@ export class PiRuntime {
   }
 
   async setThinking(on: boolean) {
-    this.applyThinkingLevel(on ? 'medium' : 'off');
+    this.applyThinkingLevel(on ? 'max' : 'off');
   }
 
   async listModels(): Promise<ModelOption[]> {

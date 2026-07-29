@@ -34,20 +34,35 @@ export function createApiHandler() {
         connection: 'keep-alive',
         'x-accel-buffering': 'no',
       });
-      res.on('error', () => {});
-      res.write(': stream open\n\n');
-      // Hydrate every new/reconnected browser with one authoritative session atomically:
-      // transcript, generated artifacts and their previews all belong to the same session dir.
-      res.write('data: ' + JSON.stringify(runtime.sessionSnapshot('initial')) + '\n\n');
       let closed = false;
-      const safeWrite = (data: string) => { if (!closed && res.writable) res.write(data); };
-      const unsub = runtime.on((e) => safeWrite('data: ' + JSON.stringify(e) + '\n\n'));
+      const cleanup = () => { closed = true; };
+      res.on('error', cleanup);
+      req.on('error', cleanup);
+      const safeWrite = (data: string) => {
+        if (closed || !res.writable) return;
+        try { res.write(data); } catch { cleanup(); }
+      };
+      try {
+        res.write(': stream open\n\n');
+        // Hydrate every new/reconnected browser with one authoritative session atomically:
+        // transcript, generated artifacts and their previews all belong to the same session dir.
+        const snapshot = runtime.sessionSnapshot('initial');
+        safeWrite('data: ' + JSON.stringify(snapshot) + '\n\n');
+      } catch (e) {
+        // If the snapshot fails (e.g. runtime not initialized), still keep the
+        // connection open so the client can retry when the server is ready.
+        safeWrite(': server initializing\n\n');
+      }
+      const unsub = runtime.on((e) => {
+        try { safeWrite('data: ' + JSON.stringify(e) + '\n\n'); } catch { cleanup(); }
+      });
       const ping = setInterval(() => safeWrite(': ping\n\n'), 25000);
-      req.on('close', () => {
+      const finalize = () => {
         closed = true;
         unsub();
         clearInterval(ping);
-      });
+      };
+      req.on('close', finalize);
       return;
     }
 
@@ -90,7 +105,11 @@ export function createApiHandler() {
         const { text, displayText, workspaceChanges } = await readBody(req);
         if (!text) return json(res, 400, { error: 'missing "text"' });
         // Fire and forget — the assistant reply streams back over /api/events.
-        void runtime.prompt(text, { displayText, workspaceChanges });
+        // Catch rejections so a failed turn never becomes an unhandled rejection
+        // that crashes the process. The error is emitted over SSE for the UI.
+        runtime.prompt(text, { displayText, workspaceChanges }).catch((err) => {
+          console.error('[pi] prompt error:', err?.message || String(err));
+        });
         return json(res, 200, { ok: true });
       }
       if (url === '/api/steer' && req.method === 'POST') {
