@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
-import type { AgentContentBlock, Artifact, FileNode, GoalStatus, LongRunningGoal, Message, TrajStep } from '../../core/agent/protocol';
+import type { AgentContentBlock, Artifact, FileNode, Message, TrajStep } from '../../core/agent/protocol';
 import { Icon, MdText, PiIcon, fileIcon, fmtMs, text, trajIcon } from '../../ui';
 import {
   createSkillFromTurn as createWorkspaceSkillFromTurn,
@@ -33,7 +33,7 @@ function fileMention(path: string): string {
 export function ConversationPanel() {
   const {
     active, showStep, openInCanvas, openTurn, sendMessage, steerMessage, interruptWithSteer, flashMsg, setFlashMsg, error, loading, connectionStatus,
-    composerDraft: input, setComposerDraft: setInput, goal, setView,
+    composerDraft: input, setComposerDraft: setInput, setView,
   } = useWorkspace();
   const skills = useSkills();
 
@@ -273,8 +273,6 @@ export function ConversationPanel() {
       setSteerDraft(null);
     }}
     onCancelSteer={() => setSteerDraft(null)}
-    goal={goal?.status === 'complete' ? null : goal}
-    onGoalCommand={(command) => sendMessage(`/goal ${command}`)}
     onChange={onChangeInput}
     onKeyDown={onKeyDownInput}
     onSend={onSend}
@@ -469,8 +467,12 @@ function AgentMessage({
           onOpenArtifact={onOpenCanvas}
         />
       )}
-      {live && !hasFlow && !m.intro && !traj.length && (
-        <div className="agent-waiting" data-testid="agent-waiting" role="status"><span />正在准备下一步…</div>
+      {live && (
+        <div className="agent-thinking-bar" data-testid="agent-thinking-bar" role="status" aria-live="polite">
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+        </div>
       )}
       <div className="msg-acts">
         <button
@@ -617,7 +619,7 @@ function AgentFlowStep({
 
 function Composer({
   value, onChange, onKeyDown, onSend, taRef, mentionMatches, mentionIndex, attachments,
-  steerDraft, goal, inline = false, onPickMention, onMentionIndex, onAttached, onRemoveAttachment, onConfirmSteer, onCancelSteer, onGoalCommand,
+  steerDraft, inline = false, onPickMention, onMentionIndex, onAttached, onRemoveAttachment, onConfirmSteer, onCancelSteer,
 }: {
   value: string;
   onChange(v: string): void;
@@ -628,7 +630,6 @@ function Composer({
   mentionIndex: number;
   attachments: ComposerAttachment[];
   steerDraft: string | null;
-  goal: LongRunningGoal | null;
   inline?: boolean;
   onPickMention(item: MentionItem): void;
   onMentionIndex(index: number): void;
@@ -636,25 +637,14 @@ function Composer({
   onRemoveAttachment(id: string): void;
   onConfirmSteer(): void;
   onCancelSteer(): void;
-  onGoalCommand(command: 'pause' | 'resume' | 'clear'): void;
 }) {
-  const { active, loading, steerQueue, thinking, toggleThinking, openInCanvas, pendingAgentChanges } = useWorkspace();
+  const { active, loading, steerQueue, openInCanvas, pendingAgentChanges } = useWorkspace();
   const attachRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
   const liveAgent = [...active.messages].reverse().find(message => message.role === 'agent' && message.status === 'running');
   const currentStep = liveAgent?.traj?.[liveAgent.traj.length - 1];
   const agentThinking = !!loading && currentStep?.t === 'think' && currentStep.status === 'running';
   const showSteerPanel = agentThinking && (!!value.trim() || !!steerDraft);
-
-  const composeGoal = () => {
-    const objective = value.trim();
-    const next = objective.startsWith('/goal') ? value : objective ? `/goal ${objective}` : '/goal ';
-    onChange(next);
-    requestAnimationFrame(() => {
-      taRef.current?.focus();
-      taRef.current?.setSelectionRange(next.length, next.length);
-    });
-  };
 
   const attachFiles = async (files: File[]) => {
     const attached: ComposerAttachment[] = [];
@@ -695,14 +685,6 @@ function Composer({
               <span className="slash-kind">{it.kind === 'skill' ? '本地' : it.desc}</span>
             </button>
           ))}
-        </div>
-      )}
-      {goal && (
-        <div className={`goal-status ${goal.status}`} data-testid="goal-status" role="status">
-          <span className="goal-status-dot" /><span className="goal-status-copy"><b>目标 · {goalStatusLabel(goal.status)}</b><small title={goal.objective}>{text(goal.objective)}</small></span>
-          {goal.status === 'active' && <button type="button" data-testid="goal-pause" onClick={() => onGoalCommand('pause')}>暂停</button>}
-          {goal.status === 'paused' && <button type="button" data-testid="goal-resume" onClick={() => onGoalCommand('resume')}>继续</button>}
-          <button type="button" className="goal-clear" data-testid="goal-clear" aria-label="清除当前目标" onClick={() => onGoalCommand('clear')}><Icon name="x" /></button>
         </div>
       )}
       <div
@@ -776,24 +758,7 @@ function Composer({
         />
         <div className="composer-tools">
           <button className="pill" data-testid="composer-attach" onClick={() => attachRef.current?.click()}><Icon name="paperclip" />附件</button>
-          <button
-            className={`pill${thinking ? ' on' : ''}`}
-            data-testid="think-toggle"
-            aria-pressed={thinking}
-            onClick={toggleThinking}
-          >
-            <Icon name="brain" />思考
-          </button>
-          <button
-            className={`pill goal-pill${goal ? ' on active' : ''}`}
-            data-testid="goal-toggle"
-            aria-pressed={!!goal}
-            aria-label={goal ? `当前目标：${goal.objective}` : '创建长程目标'}
-            disabled={loading && !goal}
-            onClick={composeGoal}
-          >
-            <Icon name="target" />目标{goal && <span>{goal.status === 'active' ? '执行中' : goalStatusLabel(goal.status)}</span>}
-          </button>
+
           <span className="spacer" />
           <button className={`send${loading ? ' steering' : ''}`} data-testid="composer-send" aria-label={loading ? '暂存 Agent 指令' : '发送消息'} disabled={!value.trim()} onClick={onSend}>
             <Icon name="send" />
@@ -802,15 +767,6 @@ function Composer({
       </div>
     </div>
   );
-}
-
-function goalStatusLabel(status: GoalStatus): string {
-  switch (status) {
-    case 'active': return '执行中';
-    case 'paused': return '已暂停';
-    case 'budgetLimited': return '预算已用尽';
-    case 'complete': return '已完成';
-  }
 }
 
 function EmptyState({ composer }: { composer: React.ReactNode }) {

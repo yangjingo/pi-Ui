@@ -36,7 +36,7 @@ export const initialAgentState: AgentState = {
   connectionStatus: 'connecting',
   steerQueue: [],
   goal: null,
-  thinking: false,
+  thinking: true,
 };
 
 export const emptyStreamingTurn = (): StreamingTurn => ({ text: '', thinking: '', steps: [], blocks: [] });

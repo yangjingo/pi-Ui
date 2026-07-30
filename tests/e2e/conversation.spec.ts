@@ -70,8 +70,6 @@ test('Goal stays out of Skill slash suggestions and dispatches through the compo
     workspaceChanges: [],
   }]);
 
-  await emitAgentEvent(page, { type: 'thinking_updated', thinking: true });
-  await expect(page.getByTestId('think-toggle')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('renders a completed Goal through the existing Traj and Canvas StepResult', async ({ page }) => {
@@ -121,9 +119,6 @@ test('renders a completed Goal through the existing Traj and Canvas StepResult',
   await installMockAgent(page, { snapshot });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-  await expect(page.locator('.composer .goal-status.complete')).toHaveCount(0);
-  await expect(page.getByTestId('goal-status')).toHaveCount(0);
-  await expect(page.getByTestId('goal-toggle')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByTestId('goal-completion')).toHaveCount(0);
 
   const completion = page.getByTestId('flow-step').filter({ hasText: '完成 Goal' });
