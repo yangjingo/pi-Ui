@@ -99,6 +99,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [refreshSessions]);
 
   const messages = useMemo<Message[]>(() => {
+    // prompt() sets streaming synchronously with loading, so the live agent placeholder
+    // is injected in the same render frame — no blink, no placeholder–restore journey.
     if (!st.streaming) return st.messages;
     const live: Message = {
       role: 'agent', status: 'running',
@@ -234,6 +236,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => agentClient.subscribe((event) => {
     if (event.type === 'session_snapshot') {
       cancelEdit();
+      // A workspace switch replaces the entire session set, so re-fetch the list from Core
+      // instead of keeping the previous workspace's conversations on screen.
+      if (event.reason === 'cwd') void refreshSessions();
       const previewPath = event.reason === 'session'
         ? [...event.messages].reverse().find(message => message.role === 'agent' && message.artifacts?.length)
           ?.artifacts?.find(artifact => !!artifact.path)?.path
@@ -293,7 +298,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       return remaining;
     });
-  }), [canvasTab, editing, cancelEdit, restoreWorkspaceUi, updatePendingAgentChanges]);
+  }), [canvasTab, editing, cancelEdit, restoreWorkspaceUi, updatePendingAgentChanges, refreshSessions]);
 
   const locateFileSource = useCallback((name: string) => {
     const leaf = basename(name);

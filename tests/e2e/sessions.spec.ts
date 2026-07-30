@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { emptySnapshot, installMockAgent } from '../fixtures/agent';
+import { emptySnapshot, emitAgentEvent, fixtureWorkspaceRoot, installMockAgent } from '../fixtures/agent';
 
 test('shows a session index without account or upgrade UI', async ({ page }) => {
   await installMockAgent(page, {
@@ -60,4 +60,54 @@ test('toggles full-page destinations without modal overlays or mixed views', asy
 
   await page.getByTestId('skill-hub').click();
   await expect(page.getByTestId('composer-input')).toBeVisible();
+});
+
+test('isolates the session list when the Workspace root switches', async ({ page }) => {
+  await installMockAgent(page, { snapshot: emptySnapshot });
+  await page.route('**/api/models', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: '{"models":[],"active":null}',
+  }));
+  let switchedWorkspace = false;
+  await page.route('**/api/cwd', async route => {
+    switchedWorkspace = true;
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        workspaceRoot: `${fixtureWorkspaceRoot}-b`,
+        cwd: `${fixtureWorkspaceRoot}-b/session`,
+        files: [],
+      }),
+    });
+  });
+  await page.route('**/api/sessions', async route => {
+    const body = JSON.stringify(switchedWorkspace
+      ? [{ id: 'new-workspace-session', title: '新目录会话', group: '今天', time: '2026-07-28 10:00', live: false }]
+      : [{ id: 'old-workspace-session', title: '旧目录会话', group: '今天', time: '2026-07-28 09:00', live: false }]);
+    await route.fulfill({ status: 200, contentType: 'application/json', body });
+  });
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('session-switcher').click();
+  await expect(page.getByTestId('session-list')).toContainText('旧目录会话');
+
+  await page.getByTestId('model-center').click();
+  await page.getByTestId('model-environment').click();
+  await page.getByTestId('cwd-input').fill(`${fixtureWorkspaceRoot}-b`);
+  const cwdResponse = page.waitForResponse(response => response.url().includes('/api/cwd'));
+  await page.getByTestId('cwd-save').click();
+  await cwdResponse;
+
+  // The Core emits an authoritative session snapshot for the new workspace; the browser
+  // re-fetches the session list so the previous workspace's conversations no longer show.
+  await emitAgentEvent(page, {
+    type: 'session_snapshot',
+    session: { id: 'new-workspace-session', title: '新目录会话', group: '今天', time: '2026-07-28 10:00', live: false },
+    messages: [], steers: [], goal: null, thinking: false,
+    cwd: `${fixtureWorkspaceRoot}-b/session`, files: [], reason: 'cwd',
+  });
+
+  await page.getByTestId('session-switcher').click();
+  await expect(page.getByTestId('session-list')).toContainText('新目录会话');
+  await expect(page.getByTestId('session-list')).not.toContainText('旧目录会话');
 });

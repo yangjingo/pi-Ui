@@ -1220,9 +1220,11 @@ export class PiRuntime {
     this.textBuf = '';
     this.pendingFiles.clear();
     this.fileHarness.clear();
-    // Keep the active session id and continue isolation under the new root.
     this.workspaceRoot = resolve(WORKSPACE_ROOT);
-    CWD = this.resolveActiveSessionPath();
+    // Each workspace root owns an isolated set of sessions. Reload from the new root so the
+    // session list no longer leaks the previous workspace's conversations.
+    this.loadSessions();
+    CWD = this.resolveActiveWorkingDirectory();
     this.markActiveSession();
     this.fileHarness.reload();
     this.messages = this.loadSessionMessages(this.activeSessionId);
