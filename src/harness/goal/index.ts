@@ -1,5 +1,21 @@
 import { createRequire } from 'node:module';
 import type { LongRunningGoal, TrajStep } from '../../core/agent/protocol';
+import {
+  GOAL_LABEL_CREATED,
+  GOAL_LABEL_CURRENT,
+  GOAL_LABEL_NO_GOAL,
+  GOAL_LABEL_UPDATED,
+  GOAL_REPORT_CAUSE_HARNESS,
+  GOAL_REPORT_EXECUTION_HINT,
+  GOAL_REPORT_INTRO,
+  GOAL_REPORT_NEXT_STEPS,
+  GOAL_REPORT_SECTION_CAUSE,
+  GOAL_REPORT_SECTION_EXECUTION,
+  GOAL_REPORT_SECTION_GOAL,
+  GOAL_REPORT_SECTION_NEXT,
+  GOAL_REPORT_SECTION_TIMELINE,
+  GOAL_REPORT_TITLE,
+} from './prompts';
 
 const GOAL_ENTRY_TYPE = 'pi-codex-goal';
 const GOAL_HARNESS_ENTRY_TYPE = 'pi-ui-goal-harness';
@@ -232,11 +248,11 @@ export class GoalHarness {
       createdAt: goal.createdAt ?? null,
       updatedAt: goal.updatedAt ?? null,
     } : null;
-    const operationLabel = name === 'get_goal' ? '当前 Goal' : name === 'create_goal' ? '已创建 Goal' : '已更新 Goal';
+    const operationLabel = name === 'get_goal' ? GOAL_LABEL_CURRENT : name === 'create_goal' ? GOAL_LABEL_CREATED : GOAL_LABEL_UPDATED;
     return {
       detail: projectedGoal
         ? `${operationLabel} · ${String(projectedGoal.status || '未知状态')} · ${goalObjective(projectedGoal.objective)}`
-        : '当前未设置 Goal',
+        : GOAL_LABEL_NO_GOAL,
       output: JSON.stringify({
         operation: name,
         ok: true,
@@ -382,13 +398,13 @@ export class GoalHarness {
       : '—';
 
     const content = [
-      '# Goal 预算终止报告',
+      GOAL_REPORT_TITLE,
       '',
-      '> Token 预算已用尽。此 Goal 保持 `budgetLimited`，没有被错误标记为完成。',
+      GOAL_REPORT_INTRO,
       '',
-      '## 执行结论',
+      GOAL_REPORT_SECTION_EXECUTION,
       '',
-      '**预算耗尽 · 目标尚未完成**',
+      GOAL_REPORT_EXECUTION_HINT,
       '',
       '| 指标 | 结果 |',
       '| --- | ---: |',
@@ -414,26 +430,24 @@ export class GoalHarness {
         `| Prefix Cache 命中率 | ${cacheHitRate} |`,
       ] : []),
       '',
-      '## Goal',
+      GOAL_REPORT_SECTION_GOAL,
       '',
       objectiveQuote(goal.objective),
       '',
-      '## 时间线',
+      GOAL_REPORT_SECTION_TIMELINE,
       '',
       `- 创建：${formatTimestamp(goal.createdAt)}`,
       `- 最后更新：${formatTimestamp(goal.updatedAt)}`,
       `- 报告生成：${formatTimestamp(generatedAt)}`,
       '',
-      '## 终止原因',
+      GOAL_REPORT_SECTION_CAUSE,
       '',
       `Goal 已消耗 ${formatNumber(tokens)} / ${formatNumber(budget)} Token，达到预算边界。`,
-      'Harness 已停止自动 continuation；现有结果只能视为阶段性进度，不能视为完成证据。',
+      GOAL_REPORT_CAUSE_HARNESS,
       '',
-      '## 后续建议',
+      GOAL_REPORT_SECTION_NEXT,
       '',
-      '- 检查当前工作区产物与最后一轮 Agent 轨迹，确认哪些要求仍未满足。',
-      '- 如需继续，使用 `/goal <objective>` 明确替换当前 Goal；默认不设置预算。',
-      '- 仅在所有要求都有实际证据后，才允许通过 `update_goal` 标记完成。',
+      ...GOAL_REPORT_NEXT_STEPS,
       '',
     ].join('\n');
 

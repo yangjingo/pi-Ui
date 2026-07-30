@@ -1,17 +1,7 @@
 import { createHash } from 'node:crypto';
+import { CONTEXT_SYSTEM_PROMPT, CONTEXT_WORKSPACE_LINE } from './prompts';
 
-export const CONTEXT_WORKSPACE_LINE =
-  'Current working directory: . (the active session workspace; resolve relative tool paths here)';
-
-/** Static, deliberately short guidance appended to Pi's base system prompt.
- * It must never contain a session id, timestamp, model name, or mutable workspace content. */
-export const CONTEXT_SYSTEM_PROMPT = `<context_harness>
-Treat context as finite working memory:
-- Keep the declared tool set stable for the whole session; select a tool by calling it, not by asking to add or remove definitions.
-- Retrieve files and Skill supporting material just in time with relative paths instead of loading broad directories up front.
-- Keep tool failures in the conversation so later attempts can adapt; do not repeat large tool results unless they are needed.
-- Persist durable plans and intermediate results in workspace files when the task outlives the current context window.
-</context_harness>`;
+export { CONTEXT_SYSTEM_PROMPT, CONTEXT_WORKSPACE_LINE };
 
 export interface ContextToolDefinition {
   name: string;
