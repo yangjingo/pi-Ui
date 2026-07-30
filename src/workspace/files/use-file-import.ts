@@ -13,7 +13,7 @@ export interface FileImportProgress {
 }
 
 export function useFileImport() {
-  const { setActiveTab } = useWorkspace();
+  const { activeId, setActiveTab } = useWorkspace();
   const [fileDrop, setFileDrop] = useState(false);
   const [dropMsg, setDropMsg] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<FileImportProgress | null>(null);
@@ -23,13 +23,17 @@ export function useFileImport() {
 
   const ingestFiles = async (files: File[]) => {
     if (!files.length) return;
+    if (!activeId) {
+      setDropMsg('请先创建 Session，再导入文件');
+      return;
+    }
     let ok = 0, office = 0, unsupported = 0, failed = 0;
     setImportProgress({ completed: 0, total: files.length, fileName: files[0].name });
     for (const [index, file] of files.entries()) {
       setImportProgress({ completed: index, total: files.length, fileName: file.name });
       try {
         const relative = ((file as any).webkitRelativePath || file.name).replace(/\\/g, '/').replace(/^\/+/, '');
-        const result = await importWorkspaceFile(file, relative === file.name ? undefined : relative);
+        const result = await importWorkspaceFile(activeId, file, relative === file.name ? undefined : relative);
         if (result.ok) {
           ok++;
           if (isOfficeFile(file.name)) office++;

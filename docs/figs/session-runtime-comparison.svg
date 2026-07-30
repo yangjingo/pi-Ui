@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="25 10 1150 795" width="1150" height="795">
+<rect x="25" y="10" width="1150" height="795" fill="#F0ECE6" />
+<rect x="45" y="135" width="510" height="650" fill="#E9DDDA" stroke="#9A7E7E" stroke-width="2" rx="4" />
+<rect x="645" y="135" width="510" height="650" fill="#DFE6E1" stroke="#7A9188" stroke-width="2" rx="4" />
+<rect x="90" y="235" width="150" height="70" fill="#C8BFB0" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="90" y="345" width="150" height="70" fill="#C8BFB0" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="335" y="285" width="165" height="90" fill="#C4B0B0" stroke="#9A7E7E" stroke-width="2" rx="4" />
+<rect x="205" y="485" width="235" height="95" fill="#B8B4C4" stroke="#887E9A" stroke-width="2" rx="4" />
+<rect x="110" y="655" width="380" height="75" fill="#E2CFCC" stroke="#9A7E7E" stroke-width="2" rx="4" />
+<rect x="690" y="225" width="150" height="65" fill="#C8BFB0" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="690" y="335" width="150" height="65" fill="#C8BFB0" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="690" y="445" width="150" height="65" fill="#C8BFB0" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="945" y="215" width="160" height="85" fill="#B8C4C0" stroke="#7A9188" stroke-width="2" rx="4" />
+<rect x="945" y="325" width="160" height="85" fill="#B4B8C8" stroke="#848A9E" stroke-width="2" rx="4" />
+<rect x="945" y="440" width="160" height="75" fill="#DDD8CF" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="700" y="645" width="405" height="85" fill="#D4DED7" stroke="#7A9188" stroke-width="2" rx="4" />
+<path d="M 240 270 L 335 315" fill="none" stroke="#9A7E7E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 240 380 L 335 335" fill="none" stroke="#9A7E7E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 417 375 L 322 485" fill="none" stroke="#9A7E7E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 840 257 L 945 257" fill="none" stroke="#7A9188" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 840 367 L 945 367" fill="none" stroke="#848A9E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 840 477 L 945 477" fill="none" stroke="#9A8E7E" stroke-width="2" marker-end="url(#arrowhead)" />
+<text x="600" y="65" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="30" fill="#4A4540" text-anchor="middle">从“全局当前会话”到 Session Runtime</text>
+<text x="600" y="98" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#908A84" text-anchor="middle">执行边界属于 Session · 导航边界属于浏览器 Tab</text>
+<text x="300" y="466" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle"></text>
+<text x="900" y="466" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle"></text>
+<text x="300" y="182" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="22" fill="#9A7E7E" text-anchor="middle">旧模型：一个全局 activeSession</text>
+<text x="900" y="182" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="22" fill="#7A9188" text-anchor="middle">新模型：按 Session 独立运行</text>
+<text x="165" y="276" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">Tab A</text>
+<text x="165" y="386" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">Tab B</text>
+<text x="417.5" y="326" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">全局</text>
+<text x="417.5" y="346.8" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">activeSessionId</text>
+<text x="322.5" y="528.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">单例 Pi Runtime</text>
+<text x="322.5" y="549.3" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">cwd / messages / flow</text>
+<text x="287.5" y="281.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">接管</text>
+<text x="287.5" y="346.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">覆盖</text>
+<text x="300" y="688.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">切换 = dispose 旧任务</text>
+<text x="300" y="708" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">多 Tab 串状态 · 新页面被 Flow 接管</text>
+<text x="765" y="263.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">Tab A</text>
+<text x="765" y="373.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">Tab B</text>
+<text x="765" y="483" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">Root / 欢迎页</text>
+<text x="1025" y="253.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">Session A</text>
+<text x="1025" y="274.3" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">running</text>
+<text x="1025" y="363.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">Session B</text>
+<text x="1025" y="384.3" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">idle</text>
+<text x="1025" y="473.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">不绑定</text>
+<text x="1025" y="493" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">任何 Session</text>
+<text x="892.5" y="246" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">/sessions/A</text>
+<text x="892.5" y="356" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">/sessions/B</text>
+<text x="892.5" y="466" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">/</text>
+<text x="902.5" y="683.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">导航不会改变执行生命周期</text>
+<text x="902.5" y="704.3" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">后台驻留 · 定向事件 · 独立 cwd</text>
+
+<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#4A4540" /></marker></defs>
+</svg>

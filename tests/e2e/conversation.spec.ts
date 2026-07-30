@@ -5,7 +5,7 @@ test('renders the completed Agent flow as markdown with interleaved trajectory s
   await installMockAgent(page, { snapshot: demoSnapshot });
   const errors = collectPageErrors(page);
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/sessions/demo', { waitUntil: 'domcontentloaded' });
   const message = page.getByTestId('agent-message');
   await expect(message).toBeVisible();
   await expect(message.locator('.md-body strong')).toHaveCount(4);
@@ -51,7 +51,7 @@ test('Goal stays out of Skill slash suggestions and dispatches through the compo
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
   });
 
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/sessions/test', { waitUntil: 'domcontentloaded' });
   const composer = page.getByTestId('composer-input');
   await expect(composer).toBeVisible();
   await composer.fill('/goal');
@@ -65,6 +65,7 @@ test('Goal stays out of Skill slash suggestions and dispatches through the compo
   await composer.fill('/goal 完成持久化长程任务');
   await composer.press('Enter');
   await expect.poll(() => requests).toEqual([{
+    sessionId: 'test',
     text: '/goal 完成持久化长程任务',
     displayText: '/goal 完成持久化长程任务',
     workspaceChanges: [],
@@ -117,7 +118,7 @@ test('renders a completed Goal through the existing Traj and Canvas StepResult',
   agent.blocks = [...(agent.blocks || []), { kind: 'step', step }];
 
   await installMockAgent(page, { snapshot });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/sessions/demo', { waitUntil: 'domcontentloaded' });
 
   await expect(page.getByTestId('goal-completion')).toHaveCount(0);
 
@@ -148,7 +149,7 @@ test('keeps an active Goal above the composer instead of inside the input surfac
     updatedAt: 140,
   };
   await installMockAgent(page, { snapshot });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto('/sessions/demo', { waitUntil: 'domcontentloaded' });
 
   const status = page.locator('.composer-wrap > .goal-status.active');
   await expect(status).toBeVisible();

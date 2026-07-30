@@ -3,15 +3,17 @@
 
 import 'dotenv/config';
 import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager } from '@earendil-works/pi-coding-agent';
-import { join, basename, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, existsSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 import {
   fileTypeOf,
   mapPiTool,
   type AgentContentBlock,
   type AgentEvent,
+  type AgentEventPayload,
   type Artifact,
   type CustomModelEntry,
   type FileNode,
@@ -48,8 +50,7 @@ import {
 const DEFAULT_CWD = process.env.PI_CWD || '.workspace';
 const CWD_STORE_DIR = join(process.cwd(), '.workspace', '.agentcore');
 const CWD_STORE_PATH = join(CWD_STORE_DIR, 'cwd.json');
-let WORKSPACE_ROOT = loadCwd();   // persisted base working directory (not per-session)
-let CWD = resolve(process.cwd(), WORKSPACE_ROOT, newSessionId());   // active session directory path
+let WORKSPACE_ROOT = loadCwd();   // persisted base working directory
 const MODEL_SPEC = DEFAULT_MODEL_SPEC;
 const SESSION_INDEX_FILE = '.sessions.json';
 const SESSION_RECORD_FILE = '.session.json';
@@ -68,6 +69,32 @@ interface QueuedSteer {
   /** Expanded input passed to Pi; retained only until Pi consumes this queue item. */
   modelText: string;
   message: Message;
+}
+
+interface SessionExecutionState {
+  id: string;
+  cwd: string;
+  session: any;
+  summary: ManagedSessionSummary;
+  messages: Message[];
+  steps: TrajStep[];
+  blocks: AgentContentBlock[];
+  textBuf: string;
+  thinkingLevel: ThinkingLevel;
+  thinkingBuf: string;
+  steerQueue: QueuedSteer[];
+  turnParentId: string | null;
+  turnMessageStartIndex: number;
+  interrupting: boolean;
+  fileHarness: FileHarness;
+  contextHarness: ContextHarness;
+  contextPrefixBaseline: ContextPrefixSnapshot | null;
+  pendingFiles: Map<string, string>;
+  resolvedModel: string | undefined;
+  turnStart: number;
+  firstTokenAt: number;
+  activeSpec: string;
+  initError: string | undefined;
 }
 
 /** Load the persisted working-directory override (falls back to PI_CWD / .workspace). */
@@ -164,55 +191,127 @@ const TOOL_TITLE: Record<string, string> = {
 export class PiRuntime {
   private listeners = new Set<Listener>();
   private modelRuntime: any;
-  private session: any = null;
   private workspaceRoot: string = resolve(WORKSPACE_ROOT);
-  private activeSessionId: string = basename(CWD);
   private sessions: ManagedSessionSummary[] = [];
-  private summary: ManagedSessionSummary = {
-    id: this.activeSessionId, title: '新对话', group: '今天', time: sessionTimestamp(), live: true,
-  };
-  private createdFallbackSession = false;
+  private executions = new Map<string, SessionExecutionState>();
+  private executionScope = new AsyncLocalStorage<SessionExecutionState>();
+  private legacyExecution!: SessionExecutionState;
   private piInheritanceApplied = false;
   private piInspection: {
     inspection: PiInstallationInspection;
     sessions: ManagedSessionSummary[];
   } | null = null;
   private bootstrapLoading: Promise<RuntimeBootstrapResult> | null = null;
-  /** Finalized UI transcript, persisted alongside this session's generated files. */
-  private messages: Message[] = [];
-  private steps: TrajStep[] = [];
-  private blocks: AgentContentBlock[] = [];
-  private textBuf = '';
-  private thinkingLevel: ThinkingLevel = 'off';
-  private thinkingBuf = '';
-  /** UI-visible mirror of Pi's native steering queue. Pi remains the source of loop ordering. */
-  private steerQueue: QueuedSteer[] = [];
-  /** The active Pi branch before the current user prompt, used for a clean interrupt rollback. */
-  private turnParentId: string | null = null;
-  /** First UI transcript item belonging to the currently running Pi loop (including delivered steers). */
-  private turnMessageStartIndex = -1;
-  private interrupting = false;
-  // The filesystem-facing policy is intentionally replaceable. PiRuntime only coordinates
-  // agent events and delegates session Files / artifact accounting to this harness.
-  private fileHarness = new FileHarness(() => CWD);
-  private contextHarness = new ContextHarness();
   private skillHarness = new SkillHarness(() => resolve(this.workspaceRoot, 'skills'));
   private goalHarness = new GoalHarness();
-  private contextPrefixBaseline: ContextPrefixSnapshot | null = null;
-  private pendingFiles = new Map<string, string>();
-  private resolvedModel: string | undefined;
-  private turnStart = 0;
-  private firstTokenAt = 0;
   private modelConfiguration = new CoreModelConfiguration();
-  private activeSpec: string = MODEL_SPEC;     // provider/modelId the session should use
   private runtimeReady = false;
-  private initError: string | undefined;
 
   constructor() {
     this.loadSessions();
-    this.fileHarness.reload();
-    this.messages = this.loadSessionMessages(this.activeSessionId);
+    if (this.sessions[0]) {
+      this.legacyExecution = this.executionFor(this.sessions[0].id)!;
+    } else {
+      const fallback = this.nextSessionSummary({ id: '__legacy__', status: 'idle' });
+      this.sessions.push(fallback);
+      this.legacyExecution = this.executionFor(fallback.id)!;
+      this.sessions.pop();
+      this.executions.delete(fallback.id);
+    }
   }
+
+  private current(): SessionExecutionState {
+    return this.executionScope.getStore() || this.legacyExecution;
+  }
+
+  private executionFor(id: string): SessionExecutionState | null {
+    const existing = this.executions.get(id);
+    if (existing) return existing;
+    const summary = this.sessions.find(item => item.id === id);
+    if (!summary) return null;
+    const cwd = inheritedWorkingDirectory(summary, this.resolveSessionPath(id));
+    const state: SessionExecutionState = {
+      id,
+      cwd,
+      session: null,
+      summary,
+      messages: [],
+      steps: [],
+      blocks: [],
+      textBuf: '',
+      thinkingLevel: 'off',
+      thinkingBuf: '',
+      steerQueue: [],
+      turnParentId: null,
+      turnMessageStartIndex: -1,
+      interrupting: false,
+      fileHarness: undefined as unknown as FileHarness,
+      contextHarness: new ContextHarness(),
+      contextPrefixBaseline: null,
+      pendingFiles: new Map<string, string>(),
+      resolvedModel: undefined,
+      turnStart: 0,
+      firstTokenAt: 0,
+      activeSpec: MODEL_SPEC,
+      initError: undefined,
+    };
+    state.fileHarness = new FileHarness(() => state.cwd);
+    this.executions.set(id, state);
+    this.executionScope.run(state, () => {
+      state.fileHarness.reload();
+      state.messages = this.loadSessionMessages(id);
+    });
+    return state;
+  }
+
+  private withSession<T>(id: string, operation: () => T): T {
+    const state = this.executionFor(id);
+    if (!state) throw new Error('会话不存在');
+    return this.executionScope.run(state, operation);
+  }
+
+  private get session() { return this.current().session; }
+  private set session(value: any) { this.current().session = value; }
+  private get summary() { return this.current().summary; }
+  private set summary(value: ManagedSessionSummary) { this.current().summary = value; }
+  private get messages() { return this.current().messages; }
+  private set messages(value: Message[]) { this.current().messages = value; }
+  private get steps() { return this.current().steps; }
+  private set steps(value: TrajStep[]) { this.current().steps = value; }
+  private get blocks() { return this.current().blocks; }
+  private set blocks(value: AgentContentBlock[]) { this.current().blocks = value; }
+  private get textBuf() { return this.current().textBuf; }
+  private set textBuf(value: string) { this.current().textBuf = value; }
+  private get thinkingLevel() { return this.current().thinkingLevel; }
+  private set thinkingLevel(value: ThinkingLevel) { this.current().thinkingLevel = value; }
+  private get thinkingBuf() { return this.current().thinkingBuf; }
+  private set thinkingBuf(value: string) { this.current().thinkingBuf = value; }
+  private get steerQueue() { return this.current().steerQueue; }
+  private set steerQueue(value: QueuedSteer[]) { this.current().steerQueue = value; }
+  private get turnParentId() { return this.current().turnParentId; }
+  private set turnParentId(value: string | null) { this.current().turnParentId = value; }
+  private get turnMessageStartIndex() { return this.current().turnMessageStartIndex; }
+  private set turnMessageStartIndex(value: number) { this.current().turnMessageStartIndex = value; }
+  private get interrupting() { return this.current().interrupting; }
+  private set interrupting(value: boolean) { this.current().interrupting = value; }
+  private get fileHarness() { return this.current().fileHarness; }
+  private set fileHarness(value: FileHarness) { this.current().fileHarness = value; }
+  private get contextHarness() { return this.current().contextHarness; }
+  private get contextPrefixBaseline() { return this.current().contextPrefixBaseline; }
+  private set contextPrefixBaseline(value: ContextPrefixSnapshot | null) { this.current().contextPrefixBaseline = value; }
+  private get pendingFiles() { return this.current().pendingFiles; }
+  private set pendingFiles(value: Map<string, string>) { this.current().pendingFiles = value; }
+  private get resolvedModel() { return this.current().resolvedModel; }
+  private set resolvedModel(value: string | undefined) { this.current().resolvedModel = value; }
+  private get turnStart() { return this.current().turnStart; }
+  private set turnStart(value: number) { this.current().turnStart = value; }
+  private get firstTokenAt() { return this.current().firstTokenAt; }
+  private set firstTokenAt(value: number) { this.current().firstTokenAt = value; }
+  private get activeSpec() { return this.current().activeSpec; }
+  private set activeSpec(value: string) { this.current().activeSpec = value; }
+  private get initError() { return this.current().initError; }
+  private set initError(value: string | undefined) { this.current().initError = value; }
+  private get cwd() { return this.current().cwd; }
 
   listSkills() {
     return this.skillHarness.list();
@@ -228,7 +327,11 @@ export class PiRuntime {
 
   /** Persist a reviewable local Skill from one completed message and its recorded trajectory.
    * The projection itself lives in SkillHarness so this runtime remains only the session/persistence bridge. */
-  createSkillFromTurn(messageIndex: number) {
+  createSkillFromTurn(sessionId: string, messageIndex: number) {
+    return this.withSession(sessionId, () => this.createSkillFromCurrentTurn(messageIndex));
+  }
+
+  private createSkillFromCurrentTurn(messageIndex: number) {
     const index = Number.isInteger(messageIndex) ? messageIndex : -1;
     const agent = this.messages[index];
     if (!agent || agent.role !== 'agent' || agent.status === 'running') return { ok: false, error: '只能从已完成的 Agent 回复生成 Skill' };
@@ -250,6 +353,10 @@ export class PiRuntime {
       group: overrides.group || '今天',
       time: overrides.time || sessionTimestamp(),
       live: overrides.live ?? false,
+      status: overrides.status || 'idle',
+      ...(overrides.completedRunId ? { completedRunId: overrides.completedRunId } : {}),
+      ...(overrides.completedAt ? { completedAt: overrides.completedAt } : {}),
+      ...(overrides.error ? { error: overrides.error } : {}),
     };
   }
 
@@ -274,6 +381,10 @@ export class PiRuntime {
       group: summary.group,
       time: summary.time,
       live: summary.live,
+      status: summary.status || (summary.live ? 'running' : 'idle'),
+      ...(summary.completedRunId ? { completedRunId: summary.completedRunId } : {}),
+      ...(summary.completedAt ? { completedAt: summary.completedAt } : {}),
+      ...(summary.error ? { error: summary.error } : {}),
     };
   }
 
@@ -281,28 +392,20 @@ export class PiRuntime {
     try {
       mkdirSync(this.workspaceRoot, { recursive: true });
       writeFileSync(this.sessionIndexPath(), JSON.stringify({
-        activeSessionId: this.activeSessionId,
         sessions: this.sessions,
       }, null, 2), 'utf8');
     } catch { /* non-fatal */ }
   }
 
   private resolveActiveSessionPath(): string {
-    return resolve(this.workspaceRoot, this.activeSessionId);
-  }
-
-  private resolveActiveWorkingDirectory(): string {
-    const session = this.sessions.find(item => item.id === this.activeSessionId);
-    return session
-      ? inheritedWorkingDirectory(session, this.resolveActiveSessionPath())
-      : this.resolveActiveSessionPath();
+    return resolve(this.workspaceRoot, this.current().id);
   }
 
   private resolveSessionPath(id: string): string {
     return resolve(this.workspaceRoot, id);
   }
 
-  private sessionRecordPath(id = this.activeSessionId): string {
+  private sessionRecordPath(id: string): string {
     return join(this.resolveSessionPath(id), SESSION_RECORD_FILE);
   }
 
@@ -353,6 +456,12 @@ export class PiRuntime {
                 record.updatedAt,
               ),
               live: false,
+              status: source.status === 'error' ? 'error'
+                : source.status === 'completed' ? 'completed'
+                  : 'idle',
+              ...(source.completedRunId ? { completedRunId: source.completedRunId } : {}),
+              ...(source.completedAt ? { completedAt: source.completedAt } : {}),
+              ...(source.error ? { error: source.error } : {}),
             },
             modified,
           });
@@ -374,25 +483,30 @@ export class PiRuntime {
         messages: this.messages,
         updatedAt: new Date().toISOString(),
       };
-      writeFileSync(this.sessionRecordPath(), JSON.stringify(record, null, 2), 'utf8');
+      writeFileSync(this.sessionRecordPath(this.current().id), JSON.stringify(record, null, 2), 'utf8');
     } catch { /* a transcript is recoverable metadata; never fail the agent turn for it */ }
   }
 
   /** One event deliberately carries the transcript and file snapshot together. This avoids a
    * visible intermediate state where old messages briefly render with a new session's files. */
-  sessionSnapshot(reason: 'initial' | 'session' | 'cwd' = 'initial'): Extract<AgentEvent, { type: 'session_snapshot' }> {
+  sessionSnapshot(id: string, reason: 'initial' | 'session' | 'cwd' = 'initial'): Extract<AgentEvent, { type: 'session_snapshot' }> {
+    return this.withSession(id, () => this.currentSessionSnapshot(reason));
+  }
+
+  private currentSessionSnapshot(reason: 'initial' | 'session' | 'cwd'): Extract<AgentEvent, { type: 'session_snapshot' }> {
     // A browser reconnect is also a reconciliation point for files created directly by tools.
     this.fileHarness.reload();
     this.markActiveSession();
     return {
       type: 'session_snapshot',
-      session: { ...this.publicSessionSummary(this.summary), live: !!this.session },
+      sessionId: this.current().id,
+      session: this.publicSessionSummary(this.summary),
       messages: this.messages.slice(),
       steers: this.steerQueue.map(entry => ({ ...entry.item })),
       goal: this.goalHarness.snapshot(this.session),
       thinking: this.thinkingLevel !== 'off',
-      cwd: CWD,
-      files: this.fileSnapshot(),
+      cwd: this.cwd,
+      files: this.fileHarness.snapshot(),
       reason,
     };
   }
@@ -438,24 +552,16 @@ export class PiRuntime {
   }
 
   private markActiveSession(): void {
-    const id = this.activeSessionId;
-    this.sessions = this.sessions.map(s => ({ ...s, live: s.id === id }));
-    const active = this.sessions.find(s => s.id === id);
-    if (active) this.summary = active;
+    const state = this.current();
+    const summary = {
+      ...state.summary,
+      live: state.summary.status === 'running',
+    };
+    state.summary = summary;
+    this.sessions = this.sessions.map(item => item.id === state.id ? summary : item);
   }
 
   private loadSessions() {
-    const fallback = () => {
-      const summary = this.nextSessionSummary({ id: newSessionId(), live: true });
-      this.createdFallbackSession = true;
-      this.activeSessionId = summary.id;
-      this.sessions = [summary];
-      CWD = this.resolveActiveSessionPath();
-      this.summary = summary;
-      this.persistSessions();
-      return;
-    };
-
     try {
       const raw = readFileSync(this.sessionIndexPath(), 'utf8');
       const data = JSON.parse(raw);
@@ -472,8 +578,14 @@ export class PiRuntime {
         const sourceId = typeof item?.pi?.sourceId === 'string' ? item.pi.sourceId.trim() : '';
         const forkPath = typeof item?.pi?.forkPath === 'string' ? item.pi.forkPath.trim() : '';
         const time = this.normalizedSessionTimestamp(id, item.time, sourcePath);
+        const status = item.status === 'error' ? 'error'
+          : item.status === 'completed' ? 'completed'
+            : 'idle';
         sessions.push({
-          id, title, group, time, live: false,
+          id, title, group, time, live: false, status,
+          ...(Number.isInteger(item.completedRunId) && item.completedRunId > 0 ? { completedRunId: item.completedRunId } : {}),
+          ...(typeof item.completedAt === 'string' && item.completedAt ? { completedAt: item.completedAt } : {}),
+          ...(status === 'error' && typeof item.error === 'string' ? { error: item.error } : {}),
           ...(sourcePath && sourceCwd && sourceId ? {
             pi: {
               sourcePath: resolve(sourcePath),
@@ -486,63 +598,26 @@ export class PiRuntime {
       }
       if (!sessions.length) {
         const recovered = this.discoverSessionSummaries();
-        if (!recovered.length) return fallback();
-        this.activeSessionId = recovered[0].id;
         this.sessions = recovered;
-        CWD = this.resolveActiveWorkingDirectory();
-        this.markActiveSession();
         this.persistSessions();
         return;
       }
-      const activeSessionId = String(data?.activeSessionId || '').trim() || sessions[0].id;
-      if (!sessions.some(s => s.id === activeSessionId)) {
-        return fallback();
-      }
-      this.activeSessionId = activeSessionId;
       this.sessions = sessions;
-      CWD = this.resolveActiveWorkingDirectory();
-      this.markActiveSession();
-      mkdirSync(CWD, { recursive: true });
     } catch {
       const recovered = this.discoverSessionSummaries();
-      if (!recovered.length) {
-        fallback();
-        return;
-      }
-      this.activeSessionId = recovered[0].id;
       this.sessions = recovered;
-      CWD = this.resolveActiveWorkingDirectory();
-      this.markActiveSession();
       this.persistSessions();
     }
-  }
-
-  private switchSessionInternal(nextSessionId: string, reason: 'session' | 'cwd') {
-    const target = this.sessions.find(s => s.id === nextSessionId);
-    if (!target) return;
-
-    try { this.session?.dispose?.(); } catch { /* ignore */ }
-    this.session = null;
-    this.activeSessionId = nextSessionId;
-    CWD = this.resolveActiveWorkingDirectory();
-    this.markActiveSession();
-    this.steps = [];
-    this.blocks = [];
-    this.textBuf = '';
-    this.thinkingBuf = '';
-    this.pendingFiles.clear();
-    this.fileHarness.clearTurn();
-    this.fileHarness.reload();
-    this.messages = this.loadSessionMessages(nextSessionId);
-    this.persistSessions();
-    this.emit(this.sessionSnapshot(reason));
   }
 
   on(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
-  private emit(e: AgentEvent) { for (const l of this.listeners) l(e); }
+  private emit(e: AgentEventPayload | AgentEvent) {
+    const event = 'sessionId' in e ? e : { ...e, sessionId: this.current().id };
+    for (const listener of this.listeners) listener(event);
+  }
 
   /** Finalize a trailing in-progress 'think' step (mark done + emit) so a tool call or the
    *  turn end closes the reasoning run at the right point in the interleaved trajectory. */
@@ -561,19 +636,17 @@ export class PiRuntime {
 
   get health() {
     return {
-      model: this.resolvedModel || this.activeSpec,
+      model: this.modelConfiguration.activeSpec,
       workspaceRoot: this.workspaceRoot,
-      cwd: CWD,
-      hasKey: !!this.resolvedModel,
-      ready: !!this.session,
-      error: this.initError,
+      hasKey: this.runtimeReady,
+      ready: this.runtimeReady,
     };
   }
 
   /** Current Workspace files for a newly connected browser. Reusing the regular file-event
    *  shape keeps initial hydration and live updates on the same reducer path. */
-  fileSnapshot(): Array<{ file: FileNode; content: string }> {
-    return this.fileHarness.snapshot();
+  fileSnapshot(id: string): Array<{ file: FileNode; content: string }> {
+    return this.withSession(id, () => this.fileHarness.snapshot());
   }
 
   /** Bridge harness diffs into Core events. The harness itself is intentionally UI-agnostic. */
@@ -603,21 +676,11 @@ export class PiRuntime {
         : session;
     });
 
-    if (this.createdFallbackSession && inherited.length) {
-      this.sessions = inherited;
-      this.activeSessionId = inherited[0].id;
-      this.createdFallbackSession = false;
-    } else {
-      const known = new Set(this.sessions.flatMap(session =>
-        session.pi ? [resolve(session.pi.sourcePath).toLowerCase()] : []));
-      this.sessions.push(...inherited.filter(session =>
-        !known.has(resolve(session.pi!.sourcePath).toLowerCase())));
-    }
-
-    this.markActiveSession();
-    CWD = this.resolveActiveWorkingDirectory();
-    this.fileHarness.reload();
-    this.messages = this.loadSessionMessages(this.activeSessionId);
+    const known = new Set(this.sessions.flatMap(session =>
+      session.pi ? [resolve(session.pi.sourcePath).toLowerCase()] : []));
+    this.sessions.push(...inherited
+      .filter(session => !known.has(resolve(session.pi!.sourcePath).toLowerCase()))
+      .map(session => ({ ...session, status: session.status || 'idle', live: false })));
     this.persistSessions();
   }
 
@@ -637,7 +700,7 @@ export class PiRuntime {
       const preview = await this.inspectPiInheritance();
       const shouldApply = inheritPi && preview.available && !this.piInheritanceApplied;
       if (shouldApply) {
-        if (this.session?.isStreaming) {
+        if ([...this.executions.values()].some(state => state.session?.isStreaming)) {
           return {
             ok: false,
             inherited: false,
@@ -646,26 +709,23 @@ export class PiRuntime {
           };
         }
         this.mergeInstalledPiSessions(this.piInspection?.sessions || []);
-        try { this.session?.dispose?.(); } catch { /* ignore */ }
-        this.session = null;
+        for (const state of this.executions.values()) {
+          try { state.session?.dispose?.(); } catch { /* ignore */ }
+        }
+        this.executions.clear();
         this.modelConfiguration = new CoreModelConfiguration({ inheritPi: true });
         this.modelRuntime = undefined;
         this.runtimeReady = false;
-        this.resolvedModel = undefined;
-        this.activeSpec = MODEL_SPEC;
-        this.initError = undefined;
         this.piInheritanceApplied = true;
       }
 
-      await this.init();
-      if (this.session) this.emit(this.sessionSnapshot(shouldApply ? 'session' : 'initial'));
+      await this.ensureRuntime();
       const currentPreview = await this.inspectPiInheritance();
       return {
-        ok: Boolean(this.session),
+        ok: this.runtimeReady,
         inherited: this.piInheritanceApplied,
         preview: currentPreview,
-        model: this.resolvedModel || this.activeSpec || undefined,
-        error: this.initError,
+        model: this.modelConfiguration.activeSpec || undefined,
       };
     })().finally(() => {
       this.bootstrapLoading = null;
@@ -676,14 +736,7 @@ export class PiRuntime {
   /** Bring up the Core-owned pi-ai Models runtime, but do NOT create a session yet. */
   private async ensureRuntime() {
     if (this.runtimeReady) return;
-    mkdirSync(CWD, { recursive: true });
     this.modelRuntime = await this.modelConfiguration.ensureRuntime();
-    this.activeSpec = this.modelConfiguration.activeSpec;
-    const inheritedThinking = this.modelConfiguration.inheritedThinkingLevel as ThinkingLevel | undefined;
-    if (this.thinkingLevel === 'off' && inheritedThinking &&
-      ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(inheritedThinking)) {
-      this.thinkingLevel = inheritedThinking;
-    }
     this.runtimeReady = true;
   }
 
@@ -693,7 +746,7 @@ export class PiRuntime {
     this.session = null;
     // Goal state is written as Pi session custom entries, so it follows the same history,
     // resume, fork, and compaction lifecycle as the agent transcript.
-    const active = this.sessions.find(item => item.id === this.activeSessionId);
+    const active = this.sessions.find(item => item.id === this.current().id);
     let sessionManager: SessionManager;
     if (active?.pi) {
       const forkDirectory = join(
@@ -704,17 +757,17 @@ export class PiRuntime {
         active.id,
       );
       if (active.pi.forkPath && await isSessionFile(active.pi.forkPath)) {
-        sessionManager = SessionManager.open(active.pi.forkPath, forkDirectory, CWD);
+        sessionManager = SessionManager.open(active.pi.forkPath, forkDirectory, this.cwd);
       } else {
         if (!await isSessionFile(active.pi.sourcePath)) {
           throw new Error('原 Pi 会话文件已不存在，无法继续该会话');
         }
-        sessionManager = SessionManager.forkFrom(active.pi.sourcePath, CWD, forkDirectory);
+        sessionManager = SessionManager.forkFrom(active.pi.sourcePath, this.cwd, forkDirectory);
         active.pi.forkPath = sessionManager.getSessionFile();
         this.persistSessions();
       }
     } else {
-      sessionManager = SessionManager.continueRecent(CWD);
+      sessionManager = SessionManager.continueRecent(this.cwd);
     }
     const restoredGoalLevel = this.goalHarness.thinkingLevelForGoal(
       this.goalHarness.snapshot({ sessionManager }),
@@ -725,7 +778,7 @@ export class PiRuntime {
       this.goalHarness.toolNames,
     );
     const resourceLoader = new DefaultResourceLoader({
-      cwd: CWD,
+      cwd: this.cwd,
       agentDir: getAgentDir(),
       noExtensions: true,
       noSkills: true,
@@ -736,7 +789,7 @@ export class PiRuntime {
     });
     await resourceLoader.reload();
     const { session } = await createAgentSession({
-      cwd: CWD,
+      cwd: this.cwd,
       model,
       modelRuntime: this.modelRuntime,
       // The Pi transcript lives under this session's own CWD. `continueRecent` creates a
@@ -748,12 +801,22 @@ export class PiRuntime {
     });
     this.session = session;
     this.contextPrefixBaseline = this.contextPrefixSnapshot();
-    session.subscribe((ev: any) => this.handle(ev));
+    const state = this.current();
+    session.subscribe((ev: any) => this.executionScope.run(state, () => this.handle(ev)));
   }
 
   async init() {
     if (this.session) return;
     await this.ensureRuntime();
+    mkdirSync(this.cwd, { recursive: true });
+    if (this.activeSpec === MODEL_SPEC && this.modelConfiguration.activeSpec) {
+      this.activeSpec = this.modelConfiguration.activeSpec;
+    }
+    const inheritedThinking = this.modelConfiguration.inheritedThinkingLevel as ThinkingLevel | undefined;
+    if (this.thinkingLevel === 'off' && inheritedThinking &&
+      ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(inheritedThinking)) {
+      this.thinkingLevel = inheritedThinking;
+    }
     const model = this.modelConfiguration.resolveModel(this.activeSpec) || this.modelConfiguration.fallbackModel();
     if (!model) {
       this.initError = '尚未配置模型。请通过模型配置页面添加模型，或编辑 Core models.json。';
@@ -861,7 +924,7 @@ export class PiRuntime {
             if (this.turnMessageStartIndex >= 0) this.messages.splice(this.turnMessageStartIndex);
             this.resetTurnAccumulators();
             this.turnMessageStartIndex = -1;
-            this.summary = { ...this.summary, live: false, time: sessionTimestamp() };
+            this.summary = { ...this.summary, live: false, status: 'idle', time: sessionTimestamp() };
             this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
             this.persistSessions();
             this.persistSessionRecord();
@@ -929,10 +992,20 @@ export class PiRuntime {
           this.resetTurnAccumulators();
           this.turnParentId = null;
           this.turnMessageStartIndex = -1;
-          this.summary = { ...this.summary, live: false, time: sessionTimestamp() };
+          const completedAt = new Date().toISOString();
+          this.summary = {
+            ...this.summary,
+            live: false,
+            status: 'completed',
+            completedRunId: (this.summary.completedRunId || 0) + 1,
+            completedAt,
+            error: undefined,
+            time: sessionTimestamp(completedAt),
+          };
           this.sessions = this.sessions.map(s => s.id === this.summary.id ? this.summary : s);
           this.persistSessions();
           this.persistSessionRecord();
+          this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
           break;
         }
         default: break;
@@ -995,7 +1068,7 @@ export class PiRuntime {
     this.firstTokenAt = 0;
   }
 
-  async prompt(text: string, presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {}) {
+  private async promptCurrent(text: string, presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {}) {
     // This is a safety net for callers racing a just-started turn. The browser normally uses
     // steer() explicitly so it can render the queue immediately.
     if (this.session?.isStreaming) {
@@ -1005,7 +1078,7 @@ export class PiRuntime {
         this.emitGoalSnapshot();
         return;
       }
-      await this.steer(text, presentation);
+      await this.steerCurrent(text, presentation);
       return;
     }
     await this.startPrompt(text, presentation);
@@ -1033,8 +1106,18 @@ export class PiRuntime {
       await this.init();
       if (!this.session) {
         this.turnMessageStartIndex = -1;
+        this.summary = {
+          ...this.summary,
+          live: false,
+          status: 'error',
+          error: this.initError || '未配置可用模型。',
+          time: sessionTimestamp(),
+        };
+        this.markActiveSession();
+        this.persistSessions();
         this.persistSessionRecord();
         this.emit({ type: 'error', message: this.initError || '未配置可用模型。' });
+        this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
         return;
       }
       if (this.session.isStreaming) {
@@ -1042,7 +1125,7 @@ export class PiRuntime {
         // duplicate transcript entry; hand the exact request to Pi's steering queue instead.
         this.messages.pop();
         this.turnMessageStartIndex = -1;
-        await this.steer(text, presentation);
+        await this.steerCurrent(text, presentation);
         return;
       }
       if (!this.summary.title || this.summary.title === '新对话') {
@@ -1052,19 +1135,39 @@ export class PiRuntime {
         this.persistSessionRecord();
         this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
       }
+      this.summary = {
+        ...this.summary,
+        live: true,
+        status: 'running',
+        error: undefined,
+        time: sessionTimestamp(),
+      };
+      this.markActiveSession();
+      this.persistSessions();
+      this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
       this.turnParentId = this.session.sessionManager.getLeafId();
       this.persistSessionRecord();
       if (replacement) this.emit({ type: 'turn_replaced', message: userMessage });
       await this.session.prompt(this.modelPrompt(text));
       this.emitGoalSnapshot();
     } catch (e: any) {
+      this.summary = {
+        ...this.summary,
+        live: false,
+        status: 'error',
+        error: e?.message || String(e),
+        time: sessionTimestamp(),
+      };
+      this.markActiveSession();
+      this.persistSessions();
       this.persistSessionRecord();
       this.emit({ type: 'error', message: e?.message || String(e) });
+      this.emit({ type: 'session_start', session: this.publicSessionSummary(this.summary) });
     }
   }
 
   /** Queue a high-priority user instruction into Pi's native steering loop. */
-  async steer(text: string, presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {}): Promise<{ ok: boolean; item?: SteerItem; error?: string }> {
+  private async steerCurrent(text: string, presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {}): Promise<{ ok: boolean; item?: SteerItem; error?: string }> {
     try {
       await this.init();
       if (!this.session) return { ok: false, error: this.initError || '未配置可用模型。' };
@@ -1089,7 +1192,7 @@ export class PiRuntime {
   }
 
   /** Stop the active turn, discard its branch from context, and start a replacement instruction. */
-  async interruptAndSteer(text: string, presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {}): Promise<{ ok: boolean; error?: string }> {
+  private async interruptAndSteerCurrent(text: string, presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {}): Promise<{ ok: boolean; error?: string }> {
     try {
       await this.init();
       if (!this.session) return { ok: false, error: this.initError || '未配置可用模型。' };
@@ -1135,13 +1238,50 @@ export class PiRuntime {
     if (level) this.applyThinkingLevel(level);
   }
 
-  async setThinking(on: boolean) {
+  private async setThinkingCurrent(on: boolean) {
     this.applyThinkingLevel(on ? 'max' : 'off');
+  }
+
+  async prompt(
+    sessionIdOrText: string,
+    textOrPresentation?: string | { displayText?: string; workspaceChanges?: WorkspaceChange[] },
+    presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {},
+  ) {
+    if (typeof textOrPresentation !== 'string') {
+      return this.promptCurrent(sessionIdOrText, textOrPresentation || {});
+    }
+    return this.withSession(sessionIdOrText, () => this.promptCurrent(textOrPresentation, presentation));
+  }
+
+  async steer(
+    sessionIdOrText: string,
+    textOrPresentation?: string | { displayText?: string; workspaceChanges?: WorkspaceChange[] },
+    presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {},
+  ) {
+    if (typeof textOrPresentation !== 'string') {
+      return this.steerCurrent(sessionIdOrText, textOrPresentation || {});
+    }
+    return this.withSession(sessionIdOrText, () => this.steerCurrent(textOrPresentation, presentation));
+  }
+
+  async interruptAndSteer(
+    sessionIdOrText: string,
+    textOrPresentation?: string | { displayText?: string; workspaceChanges?: WorkspaceChange[] },
+    presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {},
+  ) {
+    if (typeof textOrPresentation !== 'string') {
+      return this.interruptAndSteerCurrent(sessionIdOrText, textOrPresentation || {});
+    }
+    return this.withSession(sessionIdOrText, () => this.interruptAndSteerCurrent(textOrPresentation, presentation));
+  }
+
+  async setThinking(sessionId: string, on: boolean) {
+    return this.withSession(sessionId, () => this.setThinkingCurrent(on));
   }
 
   async listModels(): Promise<ModelOption[]> {
     await this.ensureRuntime();
-    return this.modelConfiguration.listModels(this.resolvedModel || this.activeSpec);
+    return this.modelConfiguration.listModels(this.modelConfiguration.activeSpec);
   }
 
   async getModelConfigFile(): Promise<ModelConfigFile> {
@@ -1170,31 +1310,20 @@ export class PiRuntime {
   }
 
   async updateModel(providerId: string, modelId: string, update: Parameters<CoreModelConfiguration['updateModel']>[2]) {
-    const result = await this.modelConfiguration.updateModel(providerId, modelId, update);
-    if (result.ok && result.model && this.resolvedModel === `${providerId}/${modelId}`) {
-      this.activeSpec = result.model;
-      this.resolvedModel = result.model;
-      const next = this.modelConfiguration.resolveModel(result.model);
-      if (next) await this.createSession(next);
-    }
-    return result;
+    return this.modelConfiguration.updateModel(providerId, modelId, update);
   }
 
   async removeCustomModel(id: string): Promise<{ ok: boolean; error?: string }> {
-    const wasActive = this.resolvedModel?.startsWith(`${id}/`) || false;
     const result = await this.modelConfiguration.removeCustomModel(id);
-    if (!result.ok) return result;
-    if (wasActive) {
-      this.resolvedModel = undefined;
-      this.activeSpec = result.active || MODEL_SPEC;
-      this.session = null;
-      try { await this.init(); } catch { /* surfaced via initError */ }
-    }
-    return { ok: true };
+    return result.ok ? { ok: true } : result;
   }
 
-  /** Switch the active model — recreates the session bound to the SDK model. */
-  async setActiveModel(providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }> {
+  /** Switch one Session's active model without affecting background sessions. */
+  async setActiveModel(sessionId: string, providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }> {
+    return this.withSession(sessionId, () => this.setActiveModelCurrent(providerId, modelId));
+  }
+
+  private async setActiveModelCurrent(providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }> {
     await this.ensureRuntime();
     const selected = await this.modelConfiguration.selectModel(providerId, modelId);
     if (!selected.ok || !selected.model || !selected.spec) return { ok: false, error: selected.error || '未找到该模型' };
@@ -1212,84 +1341,94 @@ export class PiRuntime {
   async setCwd(path: string): Promise<{ ok: boolean; error?: string; workspaceRoot?: string; cwd?: string }> {
     const p = (path || '').trim();
     if (!p) return { ok: false, error: '请填写工作目录' };
+    if ([...this.executions.values()].some(state => state.session?.isStreaming)) {
+      return { ok: false, error: '仍有 Session 在后台运行，请等待完成后再切换 Workspace' };
+    }
     try { mkdirSync(p, { recursive: true }); }
     catch (e: any) { return { ok: false, error: '无法访问该目录：' + (e?.message || e) }; }
+    const previousSessionIds = this.sessions.map(session => session.id);
+    for (const state of this.executions.values()) {
+      try { state.session?.dispose?.(); } catch { /* ignore */ }
+      state.fileHarness.clear();
+    }
+    this.executions.clear();
     WORKSPACE_ROOT = resolve(p);
     saveCwd(WORKSPACE_ROOT);
-    this.steps = [];
-    this.textBuf = '';
-    this.pendingFiles.clear();
-    this.fileHarness.clear();
     this.workspaceRoot = resolve(WORKSPACE_ROOT);
     // Each workspace root owns an isolated set of sessions. Reload from the new root so the
     // session list no longer leaks the previous workspace's conversations.
     this.loadSessions();
-    CWD = this.resolveActiveWorkingDirectory();
-    this.markActiveSession();
-    this.fileHarness.reload();
-    this.messages = this.loadSessionMessages(this.activeSessionId);
-    try {
-      await this.ensureRuntime();
-      const model = this.modelConfiguration.resolveModel(this.activeSpec) || this.modelConfiguration.fallbackModel();
-      if (model) await this.createSession(model);
-    } catch (e: any) {
-      return { ok: false, error: '切换工作目录失败：' + (e?.message || e) };
+    for (const sessionId of previousSessionIds) {
+      this.emit({
+        type: 'workspace_reset',
+        sessionId,
+        cwd: this.workspaceRoot,
+        reason: 'cwd',
+        files: [],
+      });
     }
     this.persistSessions();
-    this.emit(this.sessionSnapshot('cwd'));
     console.log('[pi] workspace root set:', WORKSPACE_ROOT);
-    return { ok: true, workspaceRoot: this.workspaceRoot, cwd: CWD };
+    return { ok: true, workspaceRoot: this.workspaceRoot, cwd: this.workspaceRoot };
   }
 
-  async saveFile(path: string, content: string): Promise<{ ok: boolean; error?: string }> {
-    const result = this.fileHarness.saveText(path, content);
-    if (result.ok && result.file) this.emit({ type: 'file', file: result.file, content: result.content || '' });
-    return { ok: result.ok, error: result.error };
+  async saveFile(sessionId: string, path: string, content: string): Promise<{ ok: boolean; error?: string }> {
+    return this.withSession(sessionId, () => {
+      const result = this.fileHarness.saveText(path, content);
+      if (result.ok && result.file) this.emit({ type: 'file', file: result.file, content: result.content || '' });
+      return { ok: result.ok, error: result.error };
+    });
   }
 
-  async importFile(path: string, data: string): Promise<{ ok: boolean; error?: string }> {
-    const result = this.fileHarness.importOffice(path, data);
-    if (result.ok && result.file) this.emit({ type: 'file', file: result.file, content: result.content || '' });
-    return { ok: result.ok, error: result.error };
+  async importFile(sessionId: string, path: string, data: string): Promise<{ ok: boolean; error?: string }> {
+    return this.withSession(sessionId, () => {
+      const result = this.fileHarness.importOffice(path, data);
+      if (result.ok && result.file) this.emit({ type: 'file', file: result.file, content: result.content || '' });
+      return { ok: result.ok, error: result.error };
+    });
   }
 
-  async renameFile(path: string, nextPath: string): Promise<{ ok: boolean; error?: string; path?: string }> {
-    const result = this.fileHarness.renameFile(path, nextPath);
-    if (result.ok && result.file && result.previousPath) {
-      this.emit({ type: 'file_rename', path: result.previousPath, file: result.file, content: result.content || '' });
-    }
-    return { ok: result.ok, path: result.path, error: result.error };
+  async renameFile(sessionId: string, path: string, nextPath: string): Promise<{ ok: boolean; error?: string; path?: string }> {
+    return this.withSession(sessionId, () => {
+      const result = this.fileHarness.renameFile(path, nextPath);
+      if (result.ok && result.file && result.previousPath) {
+        this.emit({ type: 'file_rename', path: result.previousPath, file: result.file, content: result.content || '' });
+      }
+      return { ok: result.ok, path: result.path, error: result.error };
+    });
   }
 
-  async deleteFile(path: string): Promise<{ ok: boolean; error?: string }> {
-    const result = this.fileHarness.deleteFile(path);
-    if (result.ok && result.tracked && result.path) this.emit({ type: 'file_delete', path: result.path });
-    return { ok: result.ok, error: result.error };
+  async deleteFile(sessionId: string, path: string): Promise<{ ok: boolean; error?: string }> {
+    return this.withSession(sessionId, () => {
+      const result = this.fileHarness.deleteFile(path);
+      if (result.ok && result.tracked && result.path) this.emit({ type: 'file_delete', path: result.path });
+      return { ok: result.ok, error: result.error };
+    });
   }
 
-  /** Read an inline-previewable binary from the active session only. The transport never accepts
+  /** Read an inline-previewable binary from the addressed Session only. The transport never accepts
    * absolute paths outside CWD, hidden files, directories, or payloads above the Canvas limit. */
-  readCanvasBinary(path: string): { ok: boolean; data?: Buffer; contentType?: string; error?: string } {
-    return this.fileHarness.readCanvasBinary(path);
+  readCanvasBinary(sessionId: string, path: string): { ok: boolean; data?: Buffer; contentType?: string; error?: string } {
+    return this.withSession(sessionId, () => this.fileHarness.readCanvasBinary(path));
   }
 
   listSessions(): SessionSummary[] {
-    this.markActiveSession();
     return this.sessions.map(session => this.publicSessionSummary(session));
   }
 
-  async switchSession(id: string): Promise<boolean> {
-    const target = this.sessions.find(s => s.id === id);
-    if (!target) return false;
-    this.switchSessionInternal(id, 'session');
-    return true;
+  getSession(id: string): AgentEvent | null {
+    if (!this.sessions.some(session => session.id === id)) return null;
+    return this.sessionSnapshot(id, 'session');
   }
 
-  async newSession() {
-    const next = this.nextSessionSummary({ id: newSessionId(), live: true, time: sessionTimestamp() });
+  async newSession(): Promise<SessionSummary> {
+    const next = this.nextSessionSummary({ id: newSessionId(), live: false, status: 'idle', time: sessionTimestamp() });
     this.sessions.unshift(next);
     this.persistSessions();
-    this.switchSessionInternal(next.id, 'session');
+    this.executionFor(next.id);
+    const summary = this.publicSessionSummary(next);
+    this.withSession(next.id, () => this.emit({ type: 'session_start', session: summary }));
+    return summary;
   }
 }
 

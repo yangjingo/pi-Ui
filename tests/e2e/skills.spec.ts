@@ -65,7 +65,7 @@ test('materializes a completed Agent turn as a local Skill', async ({ page }) =>
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByTestId('message-create-skill').click();
   await expect(page.getByTestId('skill-hub-page')).toBeVisible();
-  expect(requests).toEqual([{ messageIndex: 1 }]);
+  expect(requests).toEqual([{ sessionId: 'test', messageIndex: 1 }]);
 });
 
 test('keeps uploaded supporting files and saves per-file edits', async ({ page }) => {

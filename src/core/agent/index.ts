@@ -6,4 +6,6 @@
  */
 export { agentClient } from './client';
 export { requestJson } from './request';
+export { initialAgentState } from './state';
+export type { AgentClientState, AgentState } from './state';
 export * from './protocol';

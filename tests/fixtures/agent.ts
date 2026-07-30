@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import type { AgentEvent, FileNode, Message, SessionSummary } from '../../src/core/agent';
+import type { AgentEvent, AgentEventPayload, FileNode, Message, SessionSummary } from '../../src/core/agent';
 
 export type SessionSnapshot = Extract<AgentEvent, { type: 'session_snapshot' }>;
 export const fixtureWorkspaceRoot = 'C:/pi-ui-test/.workspace';
@@ -105,7 +105,8 @@ const demoFiles: Array<{ file: FileNode; content: string }> = [
 
 export const emptySnapshot: SessionSnapshot = {
   type: 'session_snapshot',
-  session: { id: 'test', title: '新对话', group: '今天', time: '2026-07-28 16:30', live: false },
+  sessionId: 'test',
+  session: { id: 'test', title: '新对话', group: '今天', time: '2026-07-28 16:30', live: false, status: 'idle' },
   messages: [],
   steers: [],
   goal: null,
@@ -117,7 +118,8 @@ export const emptySnapshot: SessionSnapshot = {
 
 export const demoSnapshot: SessionSnapshot = {
   ...emptySnapshot,
-  session: { id: 'demo', title: 'PDF 检测报告分析', group: '今天', time: '2026-07-28 16:30', live: false },
+  sessionId: 'demo',
+  session: { id: 'demo', title: 'PDF 检测报告分析', group: '今天', time: '2026-07-28 16:30', live: false, status: 'completed' },
   messages: demoMessages,
   files: demoFiles,
 };
@@ -127,11 +129,15 @@ interface MockAgentOptions {
   skills?: unknown[];
   sessions?: SessionSummary[];
   health?: Record<string, unknown>;
+  startAtWelcome?: boolean;
 }
 
 export async function installMockAgent(page: Page, options: MockAgentOptions = {}) {
   const snapshot = options.snapshot ?? emptySnapshot;
-  await page.addInitScript((initialEvent) => {
+  await page.addInitScript(({ initialEvent, startAtWelcome }) => {
+    if (!startAtWelcome && window.location.pathname === '/') {
+      window.history.replaceState({}, '', `/sessions/${encodeURIComponent(initialEvent.sessionId)}`);
+    }
     const sources = new Set<MockEventSource>();
 
     class MockEventSource extends EventTarget {
@@ -178,7 +184,7 @@ export async function installMockAgent(page: Page, options: MockAgentOptions = {
         for (const source of sources) source.emit(event);
       },
     });
-  }, snapshot);
+  }, { initialEvent: snapshot, startAtWelcome: options.startAtWelcome === true });
 
   await page.route('**/api/health', route => route.fulfill({
     status: 200,
@@ -201,13 +207,23 @@ export async function installMockAgent(page: Page, options: MockAgentOptions = {
     contentType: 'application/json',
     body: JSON.stringify(options.sessions ?? [snapshot.session]),
   }));
+  await page.route(/\/api\/session\?id=/, route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(snapshot),
+  }));
 }
 
-export async function emitAgentEvent(page: Page, event: AgentEvent) {
-  await page.evaluate(value => {
+export async function emitAgentEvent(page: Page, event: AgentEventPayload, sessionId?: string) {
+  await page.evaluate(({ value, explicitSessionId }) => {
     const emit = (window as typeof window & { __emitAgentEvent?: (event: unknown) => void }).__emitAgentEvent;
-    emit?.(value);
-  }, event);
+    const routeId = window.location.pathname.match(/^\/sessions\/([^/]+)/)?.[1];
+    const scoped: AgentEvent = {
+      ...value,
+      sessionId: explicitSessionId || (routeId ? decodeURIComponent(routeId) : 'test'),
+    } as AgentEvent;
+    emit?.(scoped);
+  }, { value: event, explicitSessionId: sessionId });
 }
 
 export function collectPageErrors(page: Page) {

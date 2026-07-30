@@ -41,8 +41,8 @@ export async function deleteSkill(id: string): Promise<void> {
   await refreshSkills();
 }
 
-export function createSkillFromTurn(messageIndex: number) {
-  return agentClient.createSkillFromTurn(messageIndex);
+export function createSkillFromTurn(sessionId: string, messageIndex: number) {
+  return agentClient.createSkillFromTurn(sessionId, messageIndex);
 }
 
 export function useSkills(): Skill[] {

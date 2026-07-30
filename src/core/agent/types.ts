@@ -113,6 +113,8 @@ export interface Session {
   files: FileNode[];
 }
 
+export type SessionLifecycleStatus = 'idle' | 'running' | 'completed' | 'error';
+
 /** Lightweight session descriptor for lists/drawers (no message bodies). */
 export interface SessionSummary {
   id: string;
@@ -122,6 +124,11 @@ export interface SessionSummary {
   group: string;
   time: string;
   live: boolean;
+  status: SessionLifecycleStatus;
+  /** Monotonic completion marker. Browsers compare this with their per-workspace seen marker. */
+  completedRunId?: number;
+  completedAt?: string;
+  error?: string;
 }
 
 /**

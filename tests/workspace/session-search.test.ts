@@ -10,6 +10,7 @@ const session: SessionSummary = {
   group: '今天',
   time: '16:30',
   live: false,
+  status: 'idle',
 };
 
 test('session search matches title and complete or partial sessid', () => {

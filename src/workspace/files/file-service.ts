@@ -21,16 +21,16 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export async function importWorkspaceFile(file: File, destPath?: string): Promise<{ ok: boolean; error?: string; file?: ImportedWorkspaceFile }> {
+export async function importWorkspaceFile(sessionId: string, file: File, destPath?: string): Promise<{ ok: boolean; error?: string; file?: ImportedWorkspaceFile }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = fileTypeOf(file.name);
   const targetPath = destPath || file.name;
   const isBinaryImport = isOfficeFile(file.name) || type === 'pdf' || type === 'png' || type === 'binary';
   const result = isBinaryImport
-    ? await agentClient.importFile(targetPath, bytesToBase64(bytes))
+    ? await agentClient.importFile(sessionId, targetPath, bytesToBase64(bytes))
     : bytes.includes(0)
       ? { ok: false, error: 'unsupported binary' }
-      : await agentClient.saveFile(targetPath, new TextDecoder().decode(bytes));
+      : await agentClient.saveFile(sessionId, targetPath, new TextDecoder().decode(bytes));
   if (!result.ok) return result;
   return {
     ok: true,
@@ -43,14 +43,14 @@ export async function importWorkspaceFile(file: File, destPath?: string): Promis
   };
 }
 
-export function workspaceFileUrl(path: string, download = false): string {
-  const query = new URLSearchParams({ path });
+export function workspaceFileUrl(sessionId: string, path: string, download = false): string {
+  const query = new URLSearchParams({ sessionId, path });
   if (download) query.set('download', '1');
   return `/api/file/raw?${query.toString()}`;
 }
 
-export async function fetchWorkspaceFileBlob(path: string, signal?: AbortSignal): Promise<Blob> {
-  const response = await fetch(workspaceFileUrl(path), { signal });
+export async function fetchWorkspaceFileBlob(sessionId: string, path: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch(workspaceFileUrl(sessionId, path), { signal });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null;
     throw new Error(payload?.error || '文件无法加载');

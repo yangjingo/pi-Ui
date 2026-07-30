@@ -3,10 +3,9 @@
 // and files come from the Core via the `agentClient` external store.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import type { FileNode, Message, Session, SessionSummary } from '../../core/agent';
+import { agentClient, initialAgentState, type FileNode, type Message, type Session, type SessionSummary } from '../../core/agent';
 import { basename, buildFileTree, findFileInSession } from '../files/workspace';
 import { isOfficeFile } from '../../harness/file';
-import { agentClient } from '../../core/agent';
 import type { PendingAgentChange, StepRef, TurnRef, View, WorkspaceCtx, WorkspaceTab } from './types';
 import { hasWorkspaceUi, readWorkspaceUi, writeWorkspaceUi } from './persistence';
 import { workspaceChangeContext } from './pending-changes';
@@ -22,12 +21,43 @@ export function useWorkspace() {
 }
 
 const editable = (f?: FileNode | null) => !!f && !isOfficeFile(f.name) && (f.type === 'md' || f.type === 'sheet' || f.type === 'html' || f.type === 'code' || f.type === 'json' || f.type === 'mermaid' || f.type === 'excalidraw');
+
+function sessionIdFromLocation(): string | null {
+  if (typeof window === 'undefined') return null;
+  const match = window.location.pathname.match(/^\/sessions\/([^/]+)\/?$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function writeSessionLocation(id: string | null, replace = false) {
+  const path = id ? `/sessions/${encodeURIComponent(id)}` : '/';
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+}
+
+function seenRunsStorageKey(workspaceRoot: string | null): string {
+  return `pi.session.seen-runs:${workspaceRoot || 'default'}`;
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const st = useSyncExternalStore(
+  const clientState = useSyncExternalStore(
     agentClient.storeSubscribe,
     agentClient.getSnapshot,
     agentClient.getSnapshot,
   );
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionIdFromLocation);
+  const st = activeSessionId
+    ? (clientState.sessions[activeSessionId] ?? {
+        ...initialAgentState,
+        model: clientState.model,
+        workspaceRoot: clientState.workspaceRoot,
+        connectionStatus: clientState.connectionStatus,
+      })
+    : {
+        ...initialAgentState,
+        model: clientState.model,
+        workspaceRoot: clientState.workspaceRoot,
+        connectionStatus: clientState.connectionStatus,
+        workspaceMode: 'disk' as const,
+      };
 
   const [activeTab, setActiveTabState] = useState<WorkspaceTab>('files');
   const [canvasTab, setCanvasTab] = useState<string | null>(null);
@@ -45,21 +75,58 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [closedFolders, setClosedFolders] = useState<Set<string>>(new Set());
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
   const thinking = st.thinking;
-  const [composerDraft, setComposerDraft] = useState('');
+  const [composerDrafts, setComposerDrafts] = useState<Record<string, string>>({});
+  const composerKey = activeSessionId || 'welcome';
+  const composerDraft = composerDrafts[composerKey] || '';
+  const setComposerDraft = useCallback((text: string) => {
+    setComposerDrafts(current => ({ ...current, [composerKey]: text }));
+  }, [composerKey]);
   const [pendingAgentChanges, setPendingAgentChanges] = useState<PendingAgentChange[]>([]);
   const [sessions, setSessionsState] = useState<SessionSummary[]>([]);
+  const [seenRuns, setSeenRuns] = useState<Record<string, number>>({});
   const [piInheritanceRevision, setPiInheritanceRevision] = useState(0);
+
+  const persistSeenRuns = useCallback((next: Record<string, number>) => {
+    setSeenRuns(next);
+    try {
+      window.localStorage.setItem(seenRunsStorageKey(clientState.workspaceRoot), JSON.stringify(next));
+    } catch { /* UI acknowledgement remains in memory */ }
+  }, [clientState.workspaceRoot]);
+
+  const markSessionSeen = useCallback((session: SessionSummary | undefined) => {
+    if (!session?.completedRunId || (seenRuns[session.id] || 0) >= session.completedRunId) return;
+    persistSeenRuns({ ...seenRuns, [session.id]: session.completedRunId });
+  }, [persistSeenRuns, seenRuns]);
+
+  const isSessionUnread = useCallback((id: string) => {
+    const session = sessions.find(item => item.id === id);
+    return !!session?.completedRunId && (seenRuns[id] || 0) < session.completedRunId;
+  }, [seenRuns, sessions]);
+
+  const hasUnreadCompletions = sessions.some(session => isSessionUnread(session.id));
+
+  useEffect(() => {
+    const key = seenRunsStorageKey(clientState.workspaceRoot);
+    const read = () => {
+      try {
+        const parsed = JSON.parse(window.localStorage.getItem(key) || '{}');
+        setSeenRuns(parsed && typeof parsed === 'object' ? parsed : {});
+      } catch { setSeenRuns({}); }
+    };
+    read();
+    const onStorage = (event: StorageEvent) => { if (event.key === key) read(); };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [clientState.workspaceRoot]);
 
   const refreshSessions = useCallback(async () => {
     const list = await agentClient.listSessions();
-    if (Array.isArray(list) && list.length) {
-      setSessionsState(list);
-    }
+    if (Array.isArray(list)) setSessionsState(list);
   }, []);
 
   const toggleThinking = useCallback(() => {
-    void agentClient.setThinking(!thinking);
-  }, [thinking]);
+    if (activeSessionId) void agentClient.setThinking(activeSessionId, !thinking);
+  }, [activeSessionId, thinking]);
 
   const bufferRef = useRef<string | null>(null);
   const originalRef = useRef<string | null>(null);
@@ -85,18 +152,40 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const summary: SessionSummary = titleOverride && st.summary
     ? { ...st.summary, title: titleOverride }
-    : (st.summary ?? { id: 'session', title: '新对话', group: '今天', time: '刚刚', live: false });
+    : (st.summary ?? { id: '', title: '新对话', group: '今天', time: '刚刚', live: false, status: 'idle' });
 
   useEffect(() => {
     let active = true;
     void refreshSessions();
-    void piInheritanceService.bootstrap().then(() => {
+    void piInheritanceService.bootstrap().then(async () => {
       if (!active) return;
       setPiInheritanceRevision(revision => revision + 1);
-      return refreshSessions();
+      await refreshSessions();
     }).catch(() => undefined);
     return () => { active = false; };
   }, [refreshSessions]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let active = true;
+    void agentClient.getSession(activeSessionId).then(result => {
+      if (!result.ok && active) {
+        setActiveSessionId(null);
+        writeSessionLocation(null, true);
+      }
+    });
+    return () => { active = false; };
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const id = sessionIdFromLocation();
+      setActiveSessionId(id);
+      if (id) void agentClient.getSession(id);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const messages = useMemo<Message[]>(() => {
     // prompt() sets streaming synchronously with loading, so the live agent placeholder
@@ -156,7 +245,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     savingRef.current = true;
     setEditSaving(true);
     setEditSaveError(null);
-    const result = await agentClient.saveFile(path, content);
+    if (!activeSessionId) return false;
+    const result = await agentClient.saveFile(activeSessionId, path, content);
     savingRef.current = false;
     setEditSaving(false);
     if (!result.ok) {
@@ -169,7 +259,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     originalRef.current = null;
     queueCanvasEdit(path, content);
     return true;
-  }, [canvasTab, active, queueCanvasEdit]);
+  }, [activeSessionId, canvasTab, active, queueCanvasEdit]);
 
   const cancelEdit = useCallback(() => {
     setEditing(false);
@@ -234,6 +324,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // File lifecycle events are shared across every connected browser. Keep open tabs and the
   // active editor aligned when another window renames or removes a Workspace file.
   useEffect(() => agentClient.subscribe((event) => {
+    if (event.type === 'session_start') {
+      setSessionsState(current => [
+        event.session,
+        ...current.filter(session => session.id !== event.sessionId),
+      ]);
+      if (event.sessionId === activeSessionId && event.session.status === 'completed') {
+        markSessionSeen(event.session);
+      }
+    }
+    if (event.sessionId !== activeSessionId) return;
     if (event.type === 'session_snapshot') {
       cancelEdit();
       // A workspace switch replaces the entire session set, so re-fetch the list from Core
@@ -298,7 +398,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       return remaining;
     });
-  }), [canvasTab, editing, cancelEdit, restoreWorkspaceUi, updatePendingAgentChanges, refreshSessions]);
+  }), [activeSessionId, canvasTab, editing, cancelEdit, restoreWorkspaceUi, updatePendingAgentChanges, refreshSessions, markSessionSeen]);
 
   const locateFileSource = useCallback((name: string) => {
     const leaf = basename(name);
@@ -372,18 +472,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const slash = path.replace(/\\/g, '/').lastIndexOf('/');
     const nextPath = slash >= 0 ? path.slice(0, slash + 1) + name : name;
     if (nextPath === path) return { ok: true, path };
-    const result = await agentClient.renameFile(path, nextPath);
+    if (!activeSessionId) return { ok: false, error: '请先创建 Session' };
+    const result = await agentClient.renameFile(activeSessionId, path, nextPath);
     if (!result.ok) return result;
     const resolved = result.path || nextPath;
     setOpenTabs(prev => prev.map(tab => tab === path ? resolved : tab));
     setCanvasTab(cur => cur === path ? resolved : cur);
     return { ok: true, path: resolved };
-  }, [editing, canvasTab, commitEdit]);
+  }, [activeSessionId, editing, canvasTab, commitEdit]);
 
   const deleteWorkspaceFile = useCallback(async (path: string) => {
     if (editing && canvasTab === path) cancelEdit();
     const index = openTabs.indexOf(path);
-    const result = await agentClient.deleteFile(path);
+    if (!activeSessionId) return { ok: false, error: '请先创建 Session' };
+    const result = await agentClient.deleteFile(activeSessionId, path);
     if (!result.ok) return result;
     const remaining = openTabs.filter(tab => tab !== path);
     setOpenTabs(remaining);
@@ -391,7 +493,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       ? (remaining[Math.min(Math.max(index, 0), remaining.length - 1)] ?? null)
       : cur);
     return { ok: true };
-  }, [editing, canvasTab, cancelEdit, openTabs]);
+  }, [activeSessionId, editing, canvasTab, cancelEdit, openTabs]);
 
   const showStep = useCallback(async (mi: number, si: number): Promise<boolean> => {
     if (editing && !(await commitEdit())) return false;
@@ -529,44 +631,61 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const sendMessage = useCallback((text: string) => {
     const { modelInput, references, sentIds } = prepareAgentMessage(text);
-    void agentClient.prompt(modelInput, text, references).then(accepted => {
+    void (async () => {
+      let sessionId = activeSessionId;
+      if (!sessionId) {
+        const created = await agentClient.newSession();
+        if (!created.ok || !created.session) return;
+        sessionId = created.session.id;
+        setActiveSessionId(sessionId);
+        writeSessionLocation(sessionId);
+        await refreshSessions();
+      }
+      const accepted = await agentClient.prompt(sessionId, modelInput, text, references);
       if (accepted) clearSentChanges(sentIds);
-    });
-  }, [prepareAgentMessage, clearSentChanges]);
+    })();
+  }, [activeSessionId, prepareAgentMessage, clearSentChanges, refreshSessions]);
 
   const steerMessage = useCallback((text: string) => {
+    if (!activeSessionId) return;
     const { modelInput, references, sentIds } = prepareAgentMessage(text);
-    void agentClient.steer(modelInput, text, references).then(accepted => {
+    void agentClient.steer(activeSessionId, modelInput, text, references).then(accepted => {
       if (accepted) clearSentChanges(sentIds);
     });
-  }, [prepareAgentMessage, clearSentChanges]);
+  }, [activeSessionId, prepareAgentMessage, clearSentChanges]);
 
   const interruptWithSteer = useCallback((text: string) => {
+    if (!activeSessionId) return;
     const { modelInput, references, sentIds } = prepareAgentMessage(text);
-    void agentClient.interruptAndSteer(modelInput, text, references).then(accepted => {
+    void agentClient.interruptAndSteer(activeSessionId, modelInput, text, references).then(accepted => {
       if (accepted) clearSentChanges(sentIds);
     });
-  }, [prepareAgentMessage, clearSentChanges]);
+  }, [activeSessionId, prepareAgentMessage, clearSentChanges]);
 
   const newChat = useCallback(async (): Promise<boolean> => {
     if (editing && !(await commitEdit())) return false;
     const result = await agentClient.newSession();
-    if (!result.ok) return false;
+    if (!result.ok || !result.session) return false;
+    setActiveSessionId(result.session.id);
+    writeSessionLocation(result.session.id);
     await refreshSessions();
     setTitleOverride(null);
     setComposerDraft('');
     setViewState('chat');
     return true;
-  }, [editing, commitEdit]);
+  }, [editing, commitEdit, refreshSessions, setComposerDraft]);
 
   const switchSession = useCallback(async (id: string): Promise<boolean> => {
     if (editing && !(await commitEdit())) return false;
-    const result = await agentClient.switchSession(id);
+    const result = await agentClient.getSession(id);
     if (!result.ok) return false;
+    setActiveSessionId(id);
+    writeSessionLocation(id);
+    markSessionSeen(sessions.find(session => session.id === id));
     await refreshSessions();
     setTitleOverride(null);
     return true;
-  }, [editing, commitEdit, refreshSessions]);
+  }, [editing, commitEdit, refreshSessions, markSessionSeen, sessions]);
   const renameSession = useCallback((_id: string, title: string) => {
     if (title.trim()) setTitleOverride(title.trim());
   }, []);
@@ -574,10 +693,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const value: WorkspaceCtx = {
     active,
-    sessions: sessions.length ? sessions : [summary],
-    activeId: summary.id,
+    sessions,
+    activeId: activeSessionId,
     activeTab, canvasTab, activeStep, activeTurn, wsOpen, editing, editDirty, editSaving, editSaveError, search, view, flashMsg, composerDraft, pendingAgentChanges,
-    error: st.error, loading: !!st.loading, connectionStatus: st.connectionStatus, steerQueue: st.steerQueue, goal: st.goal, thinking, model: st.model, workspaceRoot: st.workspaceRoot, cwd: st.cwd, piInheritanceRevision,
+    error: st.error, loading: !!st.loading, connectionStatus: clientState.connectionStatus, steerQueue: st.steerQueue, goal: st.goal, thinking, model: clientState.model, workspaceRoot: clientState.workspaceRoot, cwd: st.cwd, piInheritanceRevision,
+    hasUnreadCompletions, isSessionUnread,
     sendMessage, steerMessage, interruptWithSteer, newChat, switchSession, renameSession, delSession,
     setSearch, setView, setWsOpen, setActiveTab, revealInFiles,
     openInCanvas, closeCanvasTab, closeOtherCanvasTabs, closeAllCanvasTabs,

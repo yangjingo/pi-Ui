@@ -6,7 +6,7 @@ import { Icon, text } from '../../ui';
 import { matchesSessionSearch, sessionDisplayId, useWorkspace } from '../../workspace';
 
 export function SessionPanel() {
-  const { sessions, activeId, search, switchSession, newChat, renameSession, delSession, setSearch, setView } = useWorkspace();
+  const { sessions, activeId, search, switchSession, newChat, renameSession, delSession, isSessionUnread, setSearch, setView } = useWorkspace();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const groups: { g: string; items: typeof sessions }[] = [];
@@ -42,8 +42,9 @@ export function SessionPanel() {
             {items.map(s => (
               <div
                 key={s.id}
-                className={`session${s.id === activeId ? ' active' : ''}`}
+                className={`session is-${s.status}${s.id === activeId ? ' active' : ''}${isSessionUnread(s.id) ? ' unread-complete' : ''}`}
                 data-testid="session-item"
+                data-session-status={s.status}
                 onClick={(e) => {
                   const act = (e.target as HTMLElement).closest('[data-act]');
                   if (act) {
@@ -61,7 +62,9 @@ export function SessionPanel() {
               >
                 <div className="s-title">{text(s.title)}</div>
                 <div className="s-meta">
-                  {s.live && <span className="s-dot" />}
+                  {s.status === 'running' && <span className="s-dot is-running" title="后台运行中" />}
+                  {isSessionUnread(s.id) && <span className="s-dot is-complete" title="已完成，尚未查看" />}
+                  {s.status === 'error' && <span className="s-dot is-error" title="后台执行失败" />}
                   <span className="s-time">{s.time}</span>
                   <span className="s-id" data-testid="session-id" title={sessionDisplayId(s)}>{sessionDisplayId(s)}</span>
                 </div>

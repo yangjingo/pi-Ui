@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { AgentEvent } from '../../src/core/agent/protocol';
+import type { AgentEventPayload } from '../../src/core/agent/protocol';
 import { collectPageErrors, demoSnapshot, emitAgentEvent, installMockAgent } from '../fixtures/agent';
 
 async function openArtifact(page: import('@playwright/test').Page, name: string) {
@@ -147,6 +147,7 @@ test('edits code directly and saves it with Ctrl+S', async ({ page }) => {
   const saveRequest = await saveRequestPromise;
 
   expect(saveRequest.postDataJSON()).toEqual({
+    sessionId: 'demo',
     path: 'run_pipeline.py',
     content: nextContent,
   });
@@ -480,7 +481,7 @@ test('imports dropped text with progress and rejects binary content', async ({ p
     const body = route.request().postDataJSON() as { path: string; content: string };
     await new Promise(resolve => setTimeout(resolve, 250));
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
-    const event: AgentEvent = {
+    const event: AgentEventPayload = {
       type: 'file',
       file: { name: body.path, path: body.path, type: 'md', size: `${body.content.length} B` },
       content: body.content,
@@ -509,7 +510,7 @@ test('imports dropped text with progress and rejects binary content', async ({ p
     target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: transfer }));
     target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
   });
-  await expect(page.getByTestId('drop-msg')).toContainText('跳过');
+  await expect(page.getByTestId('drop-msg')).toContainText('写入失败');
   await expect(page.locator('[data-testid="file-item"][data-file-path="tiny.png"]')).toHaveCount(0);
 });
 
@@ -599,6 +600,7 @@ test('shows Goal content and semantic input/output in Traj instead of an empty o
 test('opens a generated Goal budget report directly in Canvas', async ({ page }) => {
   await installMockAgent(page);
   await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('composer-input')).toBeVisible();
 
   await emitAgentEvent(page, {
     type: 'goal_report',

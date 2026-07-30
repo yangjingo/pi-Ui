@@ -42,17 +42,7 @@ export function createApiHandler() {
         if (closed || !res.writable) return;
         try { res.write(data); } catch { cleanup(); }
       };
-      try {
-        res.write(': stream open\n\n');
-        // Hydrate every new/reconnected browser with one authoritative session atomically:
-        // transcript, generated artifacts and their previews all belong to the same session dir.
-        const snapshot = runtime.sessionSnapshot('initial');
-        safeWrite('data: ' + JSON.stringify(snapshot) + '\n\n');
-      } catch (e) {
-        // If the snapshot fails (e.g. runtime not initialized), still keep the
-        // connection open so the client can retry when the server is ready.
-        safeWrite(': server initializing\n\n');
-      }
+      safeWrite(': stream open\n\n');
       const unsub = runtime.on((e) => {
         try { safeWrite('data: ' + JSON.stringify(e) + '\n\n'); } catch { cleanup(); }
       });
@@ -84,7 +74,7 @@ export function createApiHandler() {
       }
       if (url === '/api/skills/from-turn' && req.method === 'POST') {
         const body = await readBody(req);
-        const result = runtime.createSkillFromTurn(Number(body?.messageIndex));
+        const result = runtime.createSkillFromTurn(String(body?.sessionId || ''), Number(body?.messageIndex));
         return json(res, result.ok ? 200 : 400, result);
       }
       if (url.startsWith('/api/skills?') && req.method === 'DELETE') {
@@ -93,41 +83,44 @@ export function createApiHandler() {
         return json(res, result.ok ? 200 : 404, result);
       }
       if (url === '/api/session/new' && req.method === 'POST') {
-        await runtime.newSession(); return json(res, 200, { ok: true, files: runtime.fileSnapshot() });
+        const session = await runtime.newSession();
+        return json(res, 200, { ok: true, session });
       }
-      if (url === '/api/session/switch' && req.method === 'POST') {
-        const body = await readBody(req);
-        const ok = await runtime.switchSession(String(body?.id || '').trim());
-        if (!ok) return json(res, 404, { ok: false, error: '会话不存在' });
-        return json(res, 200, { ok: true, files: runtime.fileSnapshot() });
+      if (url.startsWith('/api/session?') && req.method === 'GET') {
+        const id = new URL(url, 'http://localhost').searchParams.get('id') || '';
+        const snapshot = runtime.getSession(id);
+        if (!snapshot) return json(res, 404, { ok: false, error: '会话不存在' });
+        return json(res, 200, snapshot);
       }
       if (url === '/api/prompt' && req.method === 'POST') {
-        const { text, displayText, workspaceChanges } = await readBody(req);
-        if (!text) return json(res, 400, { error: 'missing "text"' });
+        const { sessionId, text, displayText, workspaceChanges } = await readBody(req);
+        if (!sessionId || !text) return json(res, 400, { error: 'missing sessionId/text' });
         // Fire and forget — the assistant reply streams back over /api/events.
         // Catch rejections so a failed turn never becomes an unhandled rejection
         // that crashes the process. The error is emitted over SSE for the UI.
-        runtime.prompt(text, { displayText, workspaceChanges }).catch((err) => {
+        runtime.prompt(String(sessionId), text, { displayText, workspaceChanges }).catch((err) => {
           console.error('[pi] prompt error:', err?.message || String(err));
         });
         return json(res, 200, { ok: true });
       }
       if (url === '/api/steer' && req.method === 'POST') {
-        const { text, displayText, workspaceChanges } = await readBody(req);
-        if (!text) return json(res, 400, { ok: false, error: 'missing "text"' });
-        const result = await runtime.steer(String(text), { displayText, workspaceChanges });
+        const { sessionId, text, displayText, workspaceChanges } = await readBody(req);
+        if (!sessionId || !text) return json(res, 400, { ok: false, error: 'missing sessionId/text' });
+        const result = await runtime.steer(String(sessionId), String(text), { displayText, workspaceChanges });
         return json(res, result.ok ? 200 : 409, result);
       }
       if (url === '/api/interrupt' && req.method === 'POST') {
-        const { text, displayText, workspaceChanges } = await readBody(req);
-        if (!text) return json(res, 400, { ok: false, error: 'missing "text"' });
-        const result = await runtime.interruptAndSteer(String(text), { displayText, workspaceChanges });
+        const { sessionId, text, displayText, workspaceChanges } = await readBody(req);
+        if (!sessionId || !text) return json(res, 400, { ok: false, error: 'missing sessionId/text' });
+        const result = await runtime.interruptAndSteer(String(sessionId), String(text), { displayText, workspaceChanges });
         return json(res, result.ok ? 200 : 409, result);
       }
       if (url.startsWith('/api/file/raw?') && req.method === 'GET') {
         const u = new URL(url, 'http://localhost');
+        const sessionId = u.searchParams.get('sessionId') || '';
         const requestedPath = u.searchParams.get('path') || '';
-        const result = runtime.readCanvasBinary(requestedPath);
+        if (!sessionId) return json(res, 400, { ok: false, error: 'missing sessionId' });
+        const result = runtime.readCanvasBinary(sessionId, requestedPath);
         if (!result.ok || !result.data) return json(res, 404, { ok: false, error: result.error || '文件不可预览' });
         const filename = requestedPath.replace(/\\/g, '/').split('/').pop() || 'download';
         const disposition = u.searchParams.get('download') === '1'
@@ -143,39 +136,41 @@ export function createApiHandler() {
         return;
       }
       if (url === '/api/file' && req.method === 'POST') {
-        const { path, content } = await readBody(req);
-        if (!path) return json(res, 400, { error: 'missing "path"' });
-        const result = await runtime.saveFile(path, content);
+        const { sessionId, path, content } = await readBody(req);
+        if (!sessionId || !path) return json(res, 400, { error: 'missing sessionId/path' });
+        const result = await runtime.saveFile(String(sessionId), path, content);
         return json(res, result.ok ? 200 : 400, result);
       }
       if (url === '/api/file/import' && req.method === 'POST') {
-        const { path, data } = await readBody(req);
-        if (!path || !data) return json(res, 400, { error: 'missing path/data' });
-        const result = await runtime.importFile(String(path), String(data));
+        const { sessionId, path, data } = await readBody(req);
+        if (!sessionId || !path || !data) return json(res, 400, { error: 'missing sessionId/path/data' });
+        const result = await runtime.importFile(String(sessionId), String(path), String(data));
         return json(res, result.ok ? 200 : 400, result);
       }
       if (url === '/api/file/rename' && req.method === 'POST') {
-        const { path, nextPath } = await readBody(req);
-        if (!path || !nextPath) return json(res, 400, { error: 'missing path/nextPath' });
-        const result = await runtime.renameFile(String(path), String(nextPath));
+        const { sessionId, path, nextPath } = await readBody(req);
+        if (!sessionId || !path || !nextPath) return json(res, 400, { error: 'missing sessionId/path/nextPath' });
+        const result = await runtime.renameFile(String(sessionId), String(path), String(nextPath));
         return json(res, result.ok ? 200 : 400, result);
       }
       if (url.startsWith('/api/file?') && req.method === 'DELETE') {
         const u = new URL(url, 'http://localhost');
+        const sessionId = u.searchParams.get('sessionId') || '';
         const path = u.searchParams.get('path') || '';
-        if (!path) return json(res, 400, { error: 'missing path' });
-        const result = await runtime.deleteFile(path);
+        if (!sessionId || !path) return json(res, 400, { error: 'missing sessionId/path' });
+        const result = await runtime.deleteFile(sessionId, path);
         return json(res, result.ok ? 200 : 400, result);
       }
       if (url === '/api/cwd' && req.method === 'POST') {
         const { path } = await readBody(req);
         if (!path) return json(res, 400, { error: 'missing "path"' });
         const result = await runtime.setCwd(String(path));
-        return json(res, result.ok ? 200 : 400, { ...result, ...runtime.health, files: runtime.fileSnapshot() });
+        return json(res, result.ok ? 200 : 400, { ...result, ...runtime.health });
       }
       if (url === '/api/thinking' && req.method === 'POST') {
-        const { on } = await readBody(req);
-        await runtime.setThinking(!!on);
+        const { sessionId, on } = await readBody(req);
+        if (!sessionId) return json(res, 400, { error: 'missing sessionId' });
+        await runtime.setThinking(String(sessionId), !!on);
         return json(res, 200, { ok: true, thinking: !!on });
       }
       if (url === '/api/models' && req.method === 'GET') {
@@ -224,9 +219,9 @@ export function createApiHandler() {
         return json(res, result.ok ? 200 : 400, { ...result, models: result.ok ? await runtime.listModels() : undefined });
       }
       if (url === '/api/models/active' && req.method === 'POST') {
-        const { providerId, modelId } = await readBody(req);
-        if (!providerId || !modelId) return json(res, 400, { error: 'missing providerId/modelId' });
-        const result = await runtime.setActiveModel(providerId, modelId);
+        const { sessionId, providerId, modelId } = await readBody(req);
+        if (!sessionId || !providerId || !modelId) return json(res, 400, { error: 'missing sessionId/providerId/modelId' });
+        const result = await runtime.setActiveModel(String(sessionId), providerId, modelId);
         return json(res, result.ok ? 200 : 400, { ...result, models: await runtime.listModels() });
       }
       return json(res, 404, { error: 'not found' });

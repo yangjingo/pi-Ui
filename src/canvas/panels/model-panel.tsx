@@ -40,7 +40,7 @@ function TestResult({ result, testId }: { result: ModelTestResult; testId: strin
 }
 
 export function ModelPanel() {
-  const { model, workspaceRoot, piInheritanceRevision } = useWorkspace();
+  const { activeId, model, workspaceRoot, piInheritanceRevision } = useWorkspace();
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<'model' | 'environment' | 'add'>('model');
@@ -239,7 +239,11 @@ export function ModelPanel() {
   const onActivate = async (m: ModelOption) => {
     if (m.active || busy) return;
     setBusy(true); setErr(null);
-    const r = await modelService.setActive(m.provider, m.modelId);
+    if (!activeId) {
+      setErr('请先创建 Session，再为它选择模型');
+      return;
+    }
+    const r = await modelService.setActive(activeId, m.provider, m.modelId);
     setBusy(false);
     if (!r.ok) setErr(r.error || '切换失败');
     await refreshModels(m.id);

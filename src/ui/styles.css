@@ -56,6 +56,12 @@ h1,h2,h3,h4{font-family:var(--headline);font-weight:300;color:var(--stone);margi
 .icon-btn svg{width:15px;height:15px;display:block}
 .icon-btn:hover{background:var(--surface-sunken);color:var(--stone-strong)}
 .icon-btn.on{background:var(--accent-soft);color:var(--stone);border-color:var(--border)}
+.session-status-trigger{position:relative}
+.session-complete-pulse{position:absolute;right:3px;top:3px;width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 0 0 color-mix(in srgb,var(--success) 45%,transparent);animation:session-complete-breathe 1.8s var(--ease-out) infinite}
+@keyframes session-complete-breathe{
+  0%,100%{opacity:.62;transform:scale(.86);box-shadow:0 0 0 0 color-mix(in srgb,var(--success) 36%,transparent)}
+  50%{opacity:1;transform:scale(1.08);box-shadow:0 0 0 5px transparent}
+}
 
 /* A config page replaces the whole main area — single column, no workspace, no overlay. The
    .page-body is the scroll region; its content centers on a readable max-width. */
@@ -84,7 +90,12 @@ html[data-input="pointer"] .session:active{transform:scale(.99)}
 .session .s-meta{display:flex;align-items:center;gap:5px;margin-top:2px}
 .session .s-time,.session .s-id{font:11px var(--mono);color:var(--content-tertiary)}
 .session .s-time{flex:none}
-.session .s-dot{width:5px;height:5px;border-radius:50%;background:var(--success)}
+.session .s-dot{width:5px;height:5px;border-radius:50%;background:var(--content-tertiary)}
+.session .s-dot.is-running{background:var(--accent);animation:session-running-pulse 1.4s var(--ease-out) infinite}
+.session .s-dot.is-complete{background:var(--success)}
+.session .s-dot.is-error{background:var(--error)}
+.session.unread-complete .s-title{font-weight:650}
+@keyframes session-running-pulse{0%,100%{opacity:.45;transform:scale(.85)}50%{opacity:1;transform:scale(1.12)}}
 .session .s-id{position:absolute;right:10px;bottom:5px;white-space:nowrap}
 .session .s-acts{position:absolute;right:6px;top:5px;display:none;gap:2px;padding-left:16px}
 .session:hover .s-acts,.session.active .s-acts{display:flex}

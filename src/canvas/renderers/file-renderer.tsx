@@ -434,6 +434,7 @@ export function SheetRenderer({ f }: { f: FileNode }) {
 /** Binary artifacts remain visible and session-scoped even when Canvas has no safe byte-level
  * preview for the format. The original remains available to tools in the same session folder. */
 export function BinaryRenderer({ f }: { f: FileNode }) {
+  const { activeId } = useWorkspace();
   const office = f.type === 'doc' || f.type === 'slides';
   const label = f.type === 'doc' ? 'Word 文档' : f.type === 'slides' ? 'PowerPoint 演示文稿' : '二进制文件';
   const path = f.path || f.name;
@@ -449,7 +450,7 @@ export function BinaryRenderer({ f }: { f: FileNode }) {
             <span className={`tree-ico ftype-${f.type}`}><Icon name={fileIcon(f.type)} /></span>
             <span><b>{text(f.name)}</b>{f.size && <small>{text(f.size)}</small>}</span>
           </div>
-          <a className="r-office-download" data-testid="renderer-office-download" href={workspaceFileUrl(path, true)} download>
+          <a className="r-office-download" data-testid="renderer-office-download" href={workspaceFileUrl(activeId || '', path, true)} download>
             <Icon name="download" />下载文件
           </a>
         </div>
@@ -518,6 +519,7 @@ function MermaidFileRenderer({ f }: { f: FileNode }) {
 }
 
 export function PdfRenderer({ f }: { f: FileNode }) {
+  const { activeId } = useWorkspace();
   const path = f.path || f.name;
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -525,7 +527,8 @@ export function PdfRenderer({ f }: { f: FileNode }) {
     const controller = new AbortController();
     let objectUrl: string | null = null;
     setUrl(null); setError(null);
-    void fetchWorkspaceFileBlob(path, controller.signal)
+    if (!activeId) return () => controller.abort();
+    void fetchWorkspaceFileBlob(activeId, path, controller.signal)
       .then(blob => {
         objectUrl = URL.createObjectURL(blob);
         setUrl(objectUrl);
@@ -534,7 +537,7 @@ export function PdfRenderer({ f }: { f: FileNode }) {
         if (reason?.name !== 'AbortError') setError(reason?.message || 'PDF 无法加载');
       });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [path]);
+  }, [activeId, path]);
   if (error) return <div className="r-office r-binary"><div className="r-doc"><p>PDF 预览失败：{text(error)}</p></div></div>;
   if (!url) return <div className="r-pdf-loading" role="status">正在加载 PDF…</div>;
   return <iframe className="r-pdf" data-testid="renderer-pdf" title={f.name} src={url} />;
@@ -551,13 +554,15 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 export function ImageRenderer({ f }: { f: FileNode }) {
+  const { activeId } = useWorkspace();
   const path = f.path || f.name;
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     setDataUrl(null); setError(null);
-    void fetchWorkspaceFileBlob(path, controller.signal)
+    if (!activeId) return () => controller.abort();
+    void fetchWorkspaceFileBlob(activeId, path, controller.signal)
       .then(async blob => {
         const nextDataUrl = await blobToDataUrl(blob);
         if (controller.signal.aborted) return;
@@ -567,7 +572,7 @@ export function ImageRenderer({ f }: { f: FileNode }) {
         if (reason?.name !== 'AbortError') setError(reason?.message || '图片无法加载');
       });
     return () => controller.abort();
-  }, [path]);
+  }, [activeId, path]);
   if (error) return <div className="r-office r-binary"><div className="r-doc"><p>图片预览失败：{text(error)}</p></div></div>;
   if (!dataUrl) return <div className="r-pdf-loading" role="status">正在加载图片…</div>;
   return (

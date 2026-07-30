@@ -24,7 +24,7 @@ import type {
  * Everything the agent runtime emits to the UI flows as one of these events.
  * The UI reduces them into its live session model (messages, trajectory, files).
  */
-export type AgentEvent =
+export type AgentEventPayload =
   | { type: 'session_start'; session: SessionSummary }
   /** Complete persisted state for one session. Sent on initial connect and session switches so
    * the conversation transcript and its workspace always change together. */
@@ -55,6 +55,12 @@ export type AgentEvent =
   | { type: 'agent_end'; message: Message }          // assistant turn finalized
   | { type: 'error'; message: string };
 
+/** Every event is routed to one durable Session. Workspace-wide consumers may subscribe to
+ * one stream, but reducers must only mutate the record selected by this id. */
+export type AgentEvent = AgentEventPayload & {
+  sessionId: string;
+};
+
 /**
  * The UI talks to the agent through this interface alone.
  * The browser implementation streams from the Node core over SSE; the Node core
@@ -62,21 +68,21 @@ export type AgentEvent =
  */
 export interface AgentClient {
   /** Send expanded model input while optionally preserving the user's original composer text in the timeline. */
-  prompt(text: string, displayText?: string, workspaceChanges?: WorkspaceChange[]): Promise<boolean>;
+  prompt(sessionId: string, text: string, displayText?: string, workspaceChanges?: WorkspaceChange[]): Promise<boolean>;
   /** Queue a message for Pi to inject before its next model call in the active loop. */
-  steer(text: string, displayText?: string, workspaceChanges?: WorkspaceChange[]): Promise<boolean>;
+  steer(sessionId: string, text: string, displayText?: string, workspaceChanges?: WorkspaceChange[]): Promise<boolean>;
   /** Abort the active loop, branch away from its input, then start a replacement prompt. */
-  interruptAndSteer(text: string, displayText?: string, workspaceChanges?: WorkspaceChange[]): Promise<boolean>;
+  interruptAndSteer(sessionId: string, text: string, displayText?: string, workspaceChanges?: WorkspaceChange[]): Promise<boolean>;
   /** Toggle extended thinking (reasoning tokens) for subsequent turns. */
-  setThinking(on: boolean): Promise<void>;
+  setThinking(sessionId: string, on: boolean): Promise<void>;
   /** Save an edited file's content back into the agent's file store. */
-  saveFile(path: string, content: string): Promise<{ ok: boolean; error?: string }>;
+  saveFile(sessionId: string, path: string, content: string): Promise<{ ok: boolean; error?: string }>;
   /** Import an Office Open XML file. The original binary is persisted; Excel receives an extracted preview. */
-  importFile(path: string, data: string): Promise<{ ok: boolean; error?: string }>;
+  importFile(sessionId: string, path: string, data: string): Promise<{ ok: boolean; error?: string }>;
   /** Rename a file inside the active workspace. */
-  renameFile(path: string, nextPath: string): Promise<{ ok: boolean; error?: string; path?: string }>;
+  renameFile(sessionId: string, path: string, nextPath: string): Promise<{ ok: boolean; error?: string; path?: string }>;
   /** Permanently delete a file inside the active workspace. */
-  deleteFile(path: string): Promise<{ ok: boolean; error?: string }>;
+  deleteFile(sessionId: string, path: string): Promise<{ ok: boolean; error?: string }>;
   /** Change the agent's working directory (re-binds the session, resets conversation state). */
   setCwd(path: string): Promise<{ ok: boolean; error?: string }>;
   listModels(): Promise<ModelOption[]>;
@@ -88,14 +94,14 @@ export interface AgentClient {
   addCustomModel(entry: CustomModelEntry): Promise<{ ok: boolean; error?: string; entry?: CustomModelEntry }>;
   updateModel(providerId: string, modelId: string, update: UpdateModelEntry): Promise<{ ok: boolean; error?: string; model?: string }>;
   removeCustomModel(id: string): Promise<{ ok: boolean; error?: string }>;
-  setActiveModel(providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }>;
+  setActiveModel(sessionId: string, providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }>;
   /** Inspect the installed Pi without applying it; returns metadata only. */
   inspectPiInheritance(): Promise<PiInheritancePreview>;
   /** UI-owned bootstrap choice: inherit installed Pi or initialize only local config. */
   bootstrapRuntime(inheritPi: boolean): Promise<RuntimeBootstrapResult>;
   listSessions(): Promise<SessionSummary[]>;
-  newSession(): Promise<{ ok: boolean; error?: string }>;
-  switchSession(id: string): Promise<{ ok: boolean; error?: string }>;
+  newSession(): Promise<{ ok: boolean; session?: SessionSummary; error?: string }>;
+  getSession(id: string): Promise<{ ok: boolean; error?: string }>;
   /** Stream of agent events. Returns an unsubscribe function. */
   subscribe(fn: (e: AgentEvent) => void): () => void;
 }

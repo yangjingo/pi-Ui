@@ -85,6 +85,7 @@ export function inheritedSessionSummary(info: SessionInfo): ManagedSessionSummar
     group: groupOf(info.modified),
     time: timeOf(info.modified),
     live: false,
+    status: 'idle',
     pi: {
       sourcePath: resolve(info.path),
       sourceCwd: resolve(info.cwd || process.cwd()),

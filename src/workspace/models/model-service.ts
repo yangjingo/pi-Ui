@@ -16,7 +16,7 @@ export const modelService = {
   update: (providerId: string, modelId: string, update: UpdateModelEntry) =>
     agentClient.updateModel(providerId, modelId, update),
   removeCustom: (id: string) => agentClient.removeCustomModel(id),
-  setActive: (providerId: string, modelId: string) => agentClient.setActiveModel(providerId, modelId),
+  setActive: (sessionId: string, providerId: string, modelId: string) => agentClient.setActiveModel(sessionId, providerId, modelId),
   setCwd: (path: string) => agentClient.setCwd(path),
   refreshHealth: () => agentClient.refreshHealth(),
 };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import type { AgentContentBlock, Artifact, FileNode, Message, TrajStep } from '../../core/agent/protocol';
 import { Icon, MdText, PiIcon, fileIcon, fmtMs, text, trajIcon } from '../../ui';
@@ -45,6 +45,8 @@ export function ConversationPanel() {
   const [followingStream, setFollowingStream] = useState(true);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const followStreamRef = useRef(true);
+  const lastSessionIdRef = useRef<string | null>(null);
+  const pendingSessionEndRef = useRef<string | null>(null);
   const [steerDraft, setSteerDraft] = useState<string | null>(null);
   const steerDraftAtRef = useRef(0);
   const [creatingSkill, setCreatingSkill] = useState<number | null>(null);
@@ -75,6 +77,39 @@ export function ConversationPanel() {
   useEffect(() => {
     if (!loading) setSteerDraft(null);
   }, [loading]);
+
+  useLayoutEffect(() => {
+    if (!active.id) {
+      lastSessionIdRef.current = null;
+      pendingSessionEndRef.current = null;
+      return;
+    }
+    if (lastSessionIdRef.current !== active.id) {
+      lastSessionIdRef.current = active.id;
+      pendingSessionEndRef.current = active.id;
+    }
+    // Session snapshots can arrive after the route has rendered its empty shell. Restore only
+    // once real transcript content is present, then leave scrolling under the reader's control.
+    if (active.messages.length === 0 || pendingSessionEndRef.current !== active.id) return;
+    const node = dialogRef.current;
+    if (!node) return;
+    followStreamRef.current = true;
+    setFollowingStream(true);
+    pendingSessionEndRef.current = null;
+    const settleAtEnd = () => { node.scrollTop = node.scrollHeight; };
+    settleAtEnd();
+    // Markdown and the composer can finish layout after this layout effect. Re-pin for the next
+    // two frames only; ongoing user scrolling remains untouched after the Session opens.
+    const firstFrame = requestAnimationFrame(() => {
+      settleAtEnd();
+      requestAnimationFrame(settleAtEnd);
+    });
+    const afterTypography = window.setTimeout(settleAtEnd, 120);
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      window.clearTimeout(afterTypography);
+    };
+  }, [active.id, active.messages.length]);
 
   const updateStreamFollowing = () => {
     const node = dialogRef.current;
@@ -172,7 +207,8 @@ export function ConversationPanel() {
   const createSkillFromTurn = async (index: number) => {
     setCreatingSkill(index);
     try {
-      const result = await createWorkspaceSkillFromTurn(index);
+      if (!active.id) return;
+      const result = await createWorkspaceSkillFromTurn(active.id, index);
       if (result.ok) await setView('skill');
     } finally {
       setCreatingSkill(null);
@@ -638,7 +674,7 @@ function Composer({
   onConfirmSteer(): void;
   onCancelSteer(): void;
 }) {
-  const { active, loading, steerQueue, openInCanvas, pendingAgentChanges } = useWorkspace();
+  const { active, loading, steerQueue, openInCanvas, pendingAgentChanges, goal } = useWorkspace();
   const attachRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
   const liveAgent = [...active.messages].reverse().find(message => message.role === 'agent' && message.status === 'running');
@@ -650,7 +686,8 @@ function Composer({
     const attached: ComposerAttachment[] = [];
     for (const file of files) {
       try {
-        const result = await importWorkspaceFile(file);
+        if (!active.id) continue;
+        const result = await importWorkspaceFile(active.id, file);
         if (!result.ok || !result.file) continue;
         attached.push(result.file);
       } catch { /* Continue importing the remaining files. */ }
@@ -665,6 +702,13 @@ function Composer({
 
   return (
     <div className={`composer-wrap${inline ? ' composer-welcome' : ''}`}>
+      {goal && goal.status !== 'complete' && (
+        <div className={`goal-status ${goal.status}`} role="status">
+          <span className="goal-status-dot" />
+          <span className="goal-status-copy"><b>GOAL</b><small>{text(goal.objective)}</small></span>
+          {goal.status === 'active' && <button type="button" data-testid="goal-pause">暂停</button>}
+        </div>
+      )}
       {mentionMatches.length > 0 && (
         <div id="composer-mention-menu" className="slash-menu" data-testid="slash-menu" role="listbox" aria-label={mentionMatches[0]?.kind === 'file' ? '工作区文件' : '本地 Skill'}>
           <div className="slash-menu-label">{mentionMatches[0]?.kind === 'file' ? '工作区文件' : '命令'}<span>↑↓ 选择 · Enter 插入</span></div>
@@ -758,6 +802,14 @@ function Composer({
         />
         <div className="composer-tools">
           <button className="pill" data-testid="composer-attach" onClick={() => attachRef.current?.click()}><Icon name="paperclip" />附件</button>
+          <button
+            className="pill"
+            data-testid="goal-toggle"
+            aria-pressed={goal?.status === 'active'}
+            onClick={() => onChange(value.startsWith('/goal') ? value : '/goal ')}
+          >
+            Goal
+          </button>
 
           <span className="spacer" />
           <button className={`send${loading ? ' steering' : ''}`} data-testid="composer-send" aria-label={loading ? '暂存 Agent 指令' : '发送消息'} disabled={!value.trim()} onClick={onSend}>

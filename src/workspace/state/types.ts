@@ -10,7 +10,7 @@ export interface TurnRef { mi: number; }
 export interface WorkspaceCtx {
   active: Session;
   sessions: SessionSummary[];
-  activeId: string;
+  activeId: string | null;
   activeTab: WorkspaceTab;
   canvasTab: string | null;
   activeStep: StepRef | null;
@@ -36,6 +36,8 @@ export interface WorkspaceCtx {
   cwd: string | null;
   /** Increments after the browser-owned Pi inheritance bootstrap completes. */
   piInheritanceRevision: number;
+  hasUnreadCompletions: boolean;
+  isSessionUnread(id: string): boolean;
   sendMessage(text: string): void;
   steerMessage(text: string): void;
   interruptWithSteer(text: string): void;

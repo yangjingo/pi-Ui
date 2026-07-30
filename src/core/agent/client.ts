@@ -4,7 +4,6 @@
 import { fileTypeOf, type AgentClient, type AgentEvent } from './contracts';
 import type {
   CustomModelEntry,
-  FileNode,
   Message,
   ModelConfigFile,
   ModelConfigImportResult,
@@ -19,12 +18,19 @@ import type {
 import { DEMO_CONTENTS, DEMO_FILES, DEMO_MESSAGES } from './demo-data';
 import { visiblePrompt } from './prompt';
 import { messageOf, requestJson } from './request';
-import { emptyStreamingTurn, initialAgentState, reduceAgentEvent, type AgentState } from './state';
+import {
+  emptyStreamingTurn,
+  initialAgentClientState,
+  initialAgentState,
+  reduceAgentEvent,
+  type AgentClientState,
+  type AgentState,
+} from './state';
 
 type ActionResult = { ok: boolean; error?: string };
 
-class BrowserAgentClient implements AgentClient {
-  private state: AgentState = initialAgentState;
+export class BrowserAgentClient implements AgentClient {
+  private state: AgentClientState = initialAgentClientState;
   private listeners = new Set<() => void>();
   private eventListeners = new Set<(e: AgentEvent) => void>();
   private es: EventSource | null = null;
@@ -51,14 +57,13 @@ class BrowserAgentClient implements AgentClient {
     }
   }
 
-  /** Pull model configuration root and active session cwd from Core. */
+  /** Pull workspace-level health metadata from Core. Session snapshots are loaded by ID. */
   async refreshHealth() {
     try {
       const h = await requestJson<{ model?: string; workspaceRoot?: string; cwd?: string }>('/api/health');
       this.set({
         model: h.model ?? null,
         workspaceRoot: h.workspaceRoot ?? null,
-        cwd: h.cwd ?? null,
       });
     } catch { /* server not ready yet — retry on next interaction */ }
   }
@@ -69,8 +74,16 @@ class BrowserAgentClient implements AgentClient {
       const stream = new EventSource('/api/events');
       this.es = stream;
       stream.onopen = () => {
-        // A reconnect is not complete until its authoritative snapshot arrives.
-        if (this.state.connectionStatus !== 'reconnecting') this.set({ connectionStatus: 'connected' });
+        const knownSessionIds = Object.keys(this.state.sessions);
+        if (this.state.connectionStatus !== 'reconnecting' || knownSessionIds.length === 0) {
+          this.set({ connectionStatus: 'connected' });
+          return;
+        }
+        // The event stream is intentionally not bound to a process-global "current" Session.
+        // Reconcile only the Session records already known by this browser instance.
+        void Promise.all(knownSessionIds.map(id => this.getSession(id))).then(() => {
+          if (this.es === stream) this.set({ connectionStatus: 'connected' });
+        });
       };
       stream.onmessage = (msg) => {
         try { this.reduce(JSON.parse(msg.data) as AgentEvent); } catch { /* skip keepalive comments */ }
@@ -110,31 +123,47 @@ class BrowserAgentClient implements AgentClient {
     this.listeners.add(fn);
     return () => { this.listeners.delete(fn); };
   };
-  getSnapshot = (): AgentState => this.state;
+  getSnapshot = (): AgentClientState => this.state;
   private emit() { for (const l of this.listeners) l(); }
-  private set(patch: Partial<AgentState>) {
+  private set(patch: Partial<AgentClientState>) {
     this.state = { ...this.state, ...patch };
     this.emit();
   }
 
+  private sessionState(id: string): AgentState {
+    return this.state.sessions[id] ?? {
+      ...initialAgentState,
+      model: this.state.model,
+      workspaceRoot: this.state.workspaceRoot,
+      connectionStatus: this.state.connectionStatus,
+    };
+  }
+
+  private setSession(id: string, patch: Partial<AgentState>) {
+    const current = this.sessionState(id);
+    this.set({ sessions: { ...this.state.sessions, [id]: { ...current, ...patch } } });
+  }
+
   private reduce(e: AgentEvent) {
     for (const l of this.eventListeners) l(e);
-    const patch = reduceAgentEvent(this.state, e);
-    if (patch) this.set(patch);
+    const current = { ...this.sessionState(e.sessionId), connectionStatus: this.state.connectionStatus };
+    const patch = reduceAgentEvent(current, e);
+    if (patch) this.setSession(e.sessionId, patch);
     if (e.type === 'session_snapshot' && this.state.connectionStatus === 'reconnecting') {
       this.set({ connectionStatus: 'connected' });
     }
   }
 
   // ---- AgentClient methods (HTTP) ----
-  async prompt(text: string, displayText?: string, workspaceChanges: WorkspaceChange[] = []): Promise<boolean> {
+  async prompt(sessionId: string, text: string, displayText?: string, workspaceChanges: WorkspaceChange[] = []): Promise<boolean> {
     const visible = visiblePrompt(displayText || text);
     const userMsg: Message = {
       role: 'user', text: visible.text, attachments: visible.attachments,
       workspaceChanges: workspaceChanges.length ? workspaceChanges : undefined, when: '刚刚',
     };
-    this.set({
-      messages: [...this.state.messages, userMsg],
+    const state = this.sessionState(sessionId);
+    this.setSession(sessionId, {
+      messages: [...state.messages, userMsg],
       streaming: emptyStreamingTurn(),
       loading: true,
       error: null,
@@ -142,36 +171,36 @@ class BrowserAgentClient implements AgentClient {
     try {
       await requestJson('/api/prompt', {
         method: 'POST',
-        body: { text, displayText: displayText || text, workspaceChanges },
+        body: { sessionId, text, displayText: displayText || text, workspaceChanges },
         errorMessage: '服务器未接受本轮任务',
       });
       return true;
     } catch (error) {
-      this.set({ error: 'network: ' + messageOf(error), loading: false });
+      this.setSession(sessionId, { error: 'network: ' + messageOf(error), loading: false });
       return false;
     }
   }
 
-  async steer(text: string, displayText?: string, workspaceChanges: WorkspaceChange[] = []): Promise<boolean> {
+  async steer(sessionId: string, text: string, displayText?: string, workspaceChanges: WorkspaceChange[] = []): Promise<boolean> {
     try {
       const result = await requestJson<{ ok?: boolean; error?: string }>('/api/steer', {
         method: 'POST',
-        body: { text, displayText: displayText || text, workspaceChanges },
+        body: { sessionId, text, displayText: displayText || text, workspaceChanges },
         errorMessage: 'Agent 无法插入当前指令',
       });
       if (!result.ok) throw new Error(result.error || 'Agent 无法插入当前指令');
       return true;
     } catch (error) {
-      this.set({ error: 'network: ' + messageOf(error) });
+      this.setSession(sessionId, { error: 'network: ' + messageOf(error) });
       return false;
     }
   }
 
-  async interruptAndSteer(text: string, displayText?: string, workspaceChanges: WorkspaceChange[] = []): Promise<boolean> {
+  async interruptAndSteer(sessionId: string, text: string, displayText?: string, workspaceChanges: WorkspaceChange[] = []): Promise<boolean> {
     try {
       const result = await requestJson<{ ok?: boolean; error?: string }>('/api/interrupt', {
         method: 'POST',
-        body: { text, displayText: displayText || text, workspaceChanges },
+        body: { sessionId, text, displayText: displayText || text, workspaceChanges },
         errorMessage: 'Agent 中断失败',
       });
       if (!result.ok) throw new Error(result.error || 'Agent 中断失败');
@@ -179,14 +208,14 @@ class BrowserAgentClient implements AgentClient {
     } catch (error) {
       // Keep the current live turn intact: this can be a transient transport loss and the SSE
       // reconnect path will reconcile it instead of incorrectly presenting the turn as finished.
-      this.set({ error: 'network: ' + messageOf(error) });
+      this.setSession(sessionId, { error: 'network: ' + messageOf(error) });
       return false;
     }
   }
 
-  async setThinking(on: boolean): Promise<void> {
+  async setThinking(sessionId: string, on: boolean): Promise<void> {
     try {
-      await requestJson('/api/thinking', { method: 'POST', body: { on } });
+      await requestJson('/api/thinking', { method: 'POST', body: { sessionId, on } });
     } catch { /* ignore */ }
   }
 
@@ -242,10 +271,10 @@ class BrowserAgentClient implements AgentClient {
       return await requestJson('/api/models/custom?id=' + encodeURIComponent(id), { method: 'DELETE' });
     } catch (error) { return { ok: false, error: 'network: ' + messageOf(error) }; }
   }
-  async setActiveModel(providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }> {
+  async setActiveModel(sessionId: string, providerId: string, modelId: string): Promise<{ ok: boolean; error?: string; model?: string }> {
     try {
       const r = await requestJson<{ ok: boolean; error?: string; model?: string }>('/api/models/active', {
-        method: 'POST', body: { providerId, modelId },
+        method: 'POST', body: { sessionId, providerId, modelId },
       });
       await this.refreshHealth();   // update the active model shown in the topbar/drawer
       return r;
@@ -253,44 +282,45 @@ class BrowserAgentClient implements AgentClient {
   }
 
   /** Ask Core's SkillHarness to turn one completed Agent message plus its trajectory into a local Skill. */
-  async createSkillFromTurn(messageIndex: number): Promise<{ ok: boolean; error?: string; skill?: { id: string; name: string } }> {
+  async createSkillFromTurn(sessionId: string, messageIndex: number): Promise<{ ok: boolean; error?: string; skill?: { id: string; name: string } }> {
     try {
       const result = await requestJson<ActionResult & { skill?: { id: string; name: string } }>('/api/skills/from-turn', {
         method: 'POST',
-        body: { messageIndex },
+        body: { sessionId, messageIndex },
         errorMessage: '无法从本轮生成 Skill',
       });
       if (!result.ok) {
         const error = result.error || '无法从本轮生成 Skill';
-        this.set({ error });
+        this.setSession(sessionId, { error });
         return { ok: false, error };
       }
       return { ok: true, skill: result.skill };
     } catch (cause) {
       const error = 'network: ' + messageOf(cause);
-      this.set({ error });
+      this.setSession(sessionId, { error });
       return { ok: false, error };
     }
   }
 
-  async saveFile(path: string, content: string): Promise<{ ok: boolean; error?: string }> {
-    const hadPrevious = Object.prototype.hasOwnProperty.call(this.state.contents, path);
-    const previous = this.state.contents[path];
-    this.set({ contents: { ...this.state.contents, [path]: content }, error: null });
+  async saveFile(sessionId: string, path: string, content: string): Promise<{ ok: boolean; error?: string }> {
+    const state = this.sessionState(sessionId);
+    const hadPrevious = Object.prototype.hasOwnProperty.call(state.contents, path);
+    const previous = state.contents[path];
+    this.setSession(sessionId, { contents: { ...state.contents, [path]: content }, error: null });
     const rollback = (error: string) => {
-      const contents = { ...this.state.contents };
+      const contents = { ...this.sessionState(sessionId).contents };
       // Do not overwrite a newer live update that arrived while this request was in flight.
       if (contents[path] === content) {
         if (hadPrevious) contents[path] = previous;
         else delete contents[path];
       }
-      this.set({ contents });
+      this.setSession(sessionId, { contents });
       return { ok: false, error };
     };
     try {
       const result = await requestJson<ActionResult>('/api/file', {
         method: 'POST',
-        body: { path, content },
+        body: { sessionId, path, content },
         errorMessage: '服务器未能写入文件',
       });
       if (!result.ok) return rollback(result.error || '服务器未能写入文件');
@@ -300,11 +330,11 @@ class BrowserAgentClient implements AgentClient {
     }
   }
 
-  async importFile(path: string, data: string): Promise<{ ok: boolean; error?: string }> {
+  async importFile(sessionId: string, path: string, data: string): Promise<{ ok: boolean; error?: string }> {
     try {
       const result = await requestJson<ActionResult>('/api/file/import', {
         method: 'POST',
-        body: { path, data },
+        body: { sessionId, path, data },
         errorMessage: '服务器未能导入 Office 文件',
       });
       if (!result.ok) return { ok: false, error: result.error || '服务器未能导入 Office 文件' };
@@ -314,16 +344,16 @@ class BrowserAgentClient implements AgentClient {
     }
   }
 
-  async renameFile(path: string, nextPath: string): Promise<{ ok: boolean; error?: string; path?: string }> {
+  async renameFile(sessionId: string, path: string, nextPath: string): Promise<{ ok: boolean; error?: string; path?: string }> {
     try {
       const result = await requestJson<ActionResult & { path?: string }>('/api/file/rename', {
         method: 'POST',
-        body: { path, nextPath },
+        body: { sessionId, path, nextPath },
         errorMessage: '重命名失败',
       });
       if (!result.ok) return { ok: false, error: result.error || '重命名失败' };
       const next = String(result.path || nextPath);
-      const state = this.state;
+      const state = this.sessionState(sessionId);
       const fileList = state.fileList.map(f => (f.path || f.name) === path
         ? { ...f, name: next.replace(/\\/g, '/').split('/').pop() || f.name, path: next, type: fileTypeOf(next) }
         : f);
@@ -332,24 +362,25 @@ class BrowserAgentClient implements AgentClient {
         contents[next] = contents[path];
         delete contents[path];
       }
-      this.set({ fileList, contents });
+      this.setSession(sessionId, { fileList, contents });
       return { ok: true, path: next };
     } catch (error) {
       return { ok: false, error: messageOf(error) };
     }
   }
 
-  async deleteFile(path: string): Promise<{ ok: boolean; error?: string }> {
+  async deleteFile(sessionId: string, path: string): Promise<{ ok: boolean; error?: string }> {
     try {
-      const result = await requestJson<ActionResult>('/api/file?path=' + encodeURIComponent(path), {
+      const result = await requestJson<ActionResult>('/api/file?sessionId=' + encodeURIComponent(sessionId) + '&path=' + encodeURIComponent(path), {
         method: 'DELETE',
         errorMessage: '删除失败',
       });
       if (!result.ok) return { ok: false, error: result.error || '删除失败' };
-      const contents = { ...this.state.contents };
+      const state = this.sessionState(sessionId);
+      const contents = { ...state.contents };
       delete contents[path];
-      this.set({
-        fileList: this.state.fileList.filter(f => (f.path || f.name) !== path),
+      this.setSession(sessionId, {
+        fileList: state.fileList.filter(f => (f.path || f.name) !== path),
         contents,
       });
       return { ok: true };
@@ -366,22 +397,12 @@ class BrowserAgentClient implements AgentClient {
         workspaceRoot?: string;
         cwd?: string;
         model?: string;
-        files?: Array<{ file: FileNode; content: string }>;
       }>('/api/cwd', { method: 'POST', body: { path } });
       if (!r.ok) return { ok: false, error: r.error };
-      const contents: Record<string, string> = {};
-      const fileList = Array.isArray(r.files) ? r.files.map((item: { file: FileNode; content: string }) => {
-        const filePath = item.file.path || item.file.name;
-        contents[filePath] = item.content;
-        return item.file;
-      }) : [];
       this.set({
-        messages: [], streaming: null, fileList, contents, error: null, loading: false,
+        sessions: {},
         workspaceRoot: r.workspaceRoot ?? path,
-        cwd: r.cwd ?? path,
         model: r.model ?? this.state.model,
-        workspaceReady: true, workspaceMode: 'disk',
-        summary: { id: 'cwd-' + Date.now().toString(36), title: '新对话', group: '今天', time: '刚刚', live: true },
       });
       return { ok: true };
     } catch (error) {
@@ -423,33 +444,30 @@ class BrowserAgentClient implements AgentClient {
   async listSessions(): Promise<SessionSummary[]> {
     try { return await requestJson('/api/sessions'); } catch { return []; }
   }
-  async newSession(): Promise<{ ok: boolean; error?: string }> {
+  async newSession(): Promise<{ ok: boolean; session?: SessionSummary; error?: string }> {
     try {
-      await requestJson('/api/session/new', { method: 'POST', errorMessage: '无法新建对话' });
+      const result = await requestJson<{ ok: boolean; session: SessionSummary }>('/api/session/new', {
+        method: 'POST',
+        errorMessage: '无法新建对话',
+      });
+      await this.getSession(result.session.id);
+      return { ok: true, session: result.session };
     } catch (cause) {
       const error = messageOf(cause);
-      this.set({ error });
       return { ok: false, error };
     }
-    this.set({ messages: [], streaming: null, error: null, loading: false });
-    return { ok: true };
   }
-  async switchSession(id: string): Promise<{ ok: boolean; error?: string }> {
+
+  async getSession(id: string): Promise<{ ok: boolean; error?: string }> {
     try {
-      const result = await requestJson<ActionResult>('/api/session/switch', {
-        method: 'POST',
-        body: { id },
+      const event = await requestJson<AgentEvent>('/api/session?id=' + encodeURIComponent(id), {
         errorMessage: '无法切换会话',
       });
-      if (!result.ok) {
-        const error = result.error || '无法切换会话';
-        this.set({ error });
-        return { ok: false, error };
-      }
+      this.reduce(event);
       return { ok: true };
     } catch (cause) {
       const error = messageOf(cause);
-      this.set({ error });
+      this.setSession(id, { error });
       return { ok: false, error };
     }
   }
@@ -457,8 +475,8 @@ class BrowserAgentClient implements AgentClient {
   /** Seed a realistic completed conversation so the Report + Canvas linkage is demoable
    *  and testable end-to-end without a live agent. UI-only — does not round-trip the Core. */
   async loadDemo(): Promise<void> {
-    this.set({
-      summary: { id: 'demo', title: 'PDF 检测报告分析', group: '今天', time: '刚刚', live: false },
+    this.setSession('demo', {
+      summary: { id: 'demo', title: 'PDF 检测报告分析', group: '今天', time: '刚刚', live: false, status: 'completed' },
       messages: DEMO_MESSAGES,
       streaming: null,
       fileList: DEMO_FILES,

@@ -25,6 +25,22 @@ gateway 和 browser-safe File Harness，不依赖 Canvas。Core/Pi 负责组合 
 和 Pi SDK，并通过 Agent protocol 对外发事件。模型 UI 显示 Workspace 已选择继承的 Pi
 配置与项目本地配置，不枚举未配置的 SDK 内置目录。
 
+Session 的执行状态与浏览器导航状态严格分离：
+
+- `core/pi` 通过 `Map<sessionId, SessionRuntime>` 持有独立的 Pi session、cwd、消息、
+  Goal、Steer 队列和 File Harness；切换前台页面不会释放后台 Runtime。
+- Session 命令和事件都显式携带 `sessionId`。工作区级 SSE 可以广播后台状态，但不能
+  改变任一 Tab 的当前页面。
+- 浏览器 Agent store 按 `sessionId` 聚合状态；`WorkspaceProvider` 只把
+  `/sessions/:sessionId` 对应的记录投影为当前页面。
+- 根路径 `/` 是未绑定 Session 的欢迎态。当前 Tab 的选择不写入服务端全局状态，也不
+  接管其他 Tab。
+- 断线重连按浏览器已知的 Session ID 分别获取权威快照，不存在服务端“当前 Session”
+  回退路径。
+
+设计背景、取舍和全局架构图见
+[`SESSION-BACKGROUND-FLOW-GOAL.md`](./SESSION-BACKGROUND-FLOW-GOAL.md)。
+
 主要依赖方向是 `canvas → workspace → core/agent`、`canvas → ui` 和
 `core/pi → harness`。Core 模型目录的事实来源是
 `.workspace/.agentcore/models.json`；Pi SDK、模型凭据与本地文件系统不得进入浏览器
@@ -37,7 +53,7 @@ Context 的稳定前缀、Tool/Skill 插入顺序和 cache usage 指标见
 
 - `workspaceRoot` 是持久化的 Workspace 根目录，默认以 `.workspace` 结尾；模型配置 UI
   使用这个值，并展示 `.agentcore/models.json` 与受保护的 `.agentcore/auth.json`。
-- `cwd` 是当前 Agent 会话目录，即 `workspaceRoot/<sessionId>`；Files、Traj、消息和
+- `cwd` 是目标 Agent Session 的目录，即 `workspaceRoot/<sessionId>`；Files、Traj、消息和
   Canvas 会话状态继续按这个目录隔离。
 
 Core 只向浏览器返回 `auth.json` 的安全路径元数据，凭据内容始终留在服务端。

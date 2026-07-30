@@ -30,6 +30,15 @@ export interface AgentState {
   thinking: boolean;
 }
 
+/** Browser-wide store. Session data is keyed, while connection/model/workspace metadata is
+ * shared by every Session displayed in this browser Tab. */
+export interface AgentClientState {
+  sessions: Record<string, AgentState>;
+  model: string | null;
+  workspaceRoot: string | null;
+  connectionStatus: 'connecting' | 'connected' | 'reconnecting';
+}
+
 export const initialAgentState: AgentState = {
   summary: null, messages: [], streaming: null, fileList: [], contents: {}, error: null, loading: false,
   model: null, workspaceRoot: null, cwd: null, workspaceReady: false, workspaceMode: 'loading',
@@ -37,6 +46,13 @@ export const initialAgentState: AgentState = {
   steerQueue: [],
   goal: null,
   thinking: true,
+};
+
+export const initialAgentClientState: AgentClientState = {
+  sessions: {},
+  model: null,
+  workspaceRoot: null,
+  connectionStatus: 'connecting',
 };
 
 export const emptyStreamingTurn = (): StreamingTurn => ({ text: '', thinking: '', steps: [], blocks: [] });

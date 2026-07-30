@@ -1,5 +1,96 @@
 import { expect, test } from '@playwright/test';
-import { emptySnapshot, emitAgentEvent, fixtureWorkspaceRoot, installMockAgent } from '../fixtures/agent';
+import { demoSnapshot, emptySnapshot, emitAgentEvent, fixtureWorkspaceRoot, installMockAgent } from '../fixtures/agent';
+
+test('opens the root route as an unbound welcome page', async ({ page }) => {
+  await installMockAgent(page, { snapshot: emptySnapshot, startAtWelcome: true });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: '开始一个新的 Agent 任务' })).toBeVisible();
+  await expect(page.getByTestId('agent-message')).toHaveCount(0);
+});
+
+test('opens an existing session at the end of its transcript', async ({ page }) => {
+  const snapshot = structuredClone(demoSnapshot);
+  snapshot.messages = Array.from({ length: 6 }, () => structuredClone(demoSnapshot.messages)).flat();
+  await installMockAgent(page, { snapshot });
+  await page.setViewportSize({ width: 1100, height: 480 });
+  await page.goto('/sessions/demo', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('agent-message')).toHaveCount(6);
+
+  await expect.poll(() => page.getByTestId('conversation').evaluate(node =>
+    Math.round(node.scrollHeight - node.clientHeight - node.scrollTop)
+  )).toBeLessThanOrEqual(32);
+});
+
+test('keeps each tab bound to its URL session when another session completes', async ({ page, context }) => {
+  const sessionA = {
+    ...emptySnapshot,
+    sessionId: 'session-a',
+    session: { ...emptySnapshot.session, id: 'session-a', title: 'Session A' },
+  };
+  const sessionB = {
+    ...emptySnapshot,
+    sessionId: 'session-b',
+    session: { ...emptySnapshot.session, id: 'session-b', title: 'Session B' },
+  };
+  const sessions = [sessionA.session, sessionB.session];
+  await installMockAgent(page, { snapshot: sessionA, sessions });
+  const secondPage = await context.newPage();
+  await installMockAgent(secondPage, { snapshot: sessionB, sessions });
+
+  await page.goto('/sessions/session-a', { waitUntil: 'domcontentloaded' });
+  await secondPage.goto('/sessions/session-b', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('composer-input').fill('A 页签中的草稿');
+  await page.getByTestId('session-switcher').click();
+  await expect(page.getByTestId('session-item')).toHaveCount(2);
+  await page.getByTestId('session-switcher').click();
+
+  const completedB = {
+    ...sessionB.session,
+    status: 'completed' as const,
+    completedRunId: 1,
+    completedAt: new Date().toISOString(),
+  };
+  await emitAgentEvent(page, { type: 'session_start', session: completedB }, 'session-b');
+  await emitAgentEvent(secondPage, { type: 'session_start', session: completedB }, 'session-b');
+
+  await expect(page).toHaveURL(/\/sessions\/session-a$/);
+  await expect(secondPage).toHaveURL(/\/sessions\/session-b$/);
+  await expect(page.getByTestId('composer-input')).toHaveValue('A 页签中的草稿');
+  await expect(secondPage.getByTestId('session-complete-pulse')).toHaveCount(0);
+  await secondPage.close();
+});
+
+test('signals an unread completion from a background session', async ({ page }) => {
+  const active = {
+    ...emptySnapshot,
+    sessionId: 'active-session',
+    session: { ...emptySnapshot.session, id: 'active-session', title: 'Active' },
+  };
+  const background = { ...emptySnapshot.session, id: 'background-session', title: 'Background' };
+  await installMockAgent(page, { snapshot: active, sessions: [active.session, background] });
+  await page.goto('/sessions/active-session', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('session-switcher').click();
+  await expect(page.getByTestId('session-item')).toHaveCount(2);
+  await page.getByTestId('session-switcher').click();
+
+  await emitAgentEvent(page, {
+    type: 'session_start',
+    session: {
+      ...background,
+      status: 'completed',
+      completedRunId: 1,
+      completedAt: new Date().toISOString(),
+    },
+  }, background.id);
+
+  await expect(page.getByTestId('session-complete-pulse')).toBeVisible();
+  await page.getByTestId('session-switcher').click();
+  await page.getByTestId('session-item').filter({ hasText: 'Background' }).click();
+  await expect(page).toHaveURL(/\/sessions\/background-session$/);
+  await expect(page.getByTestId('session-complete-pulse')).toHaveCount(0);
+});
 
 test('shows a session index without account or upgrade UI', async ({ page }) => {
   await installMockAgent(page, {
@@ -13,6 +104,7 @@ test('shows a session index without account or upgrade UI', async ({ page }) => 
         group: '昨天',
         time: '2026-07-27 09:15',
         live: false,
+        status: 'idle',
       },
     ],
   });
@@ -82,8 +174,8 @@ test('isolates the session list when the Workspace root switches', async ({ page
   });
   await page.route('**/api/sessions', async route => {
     const body = JSON.stringify(switchedWorkspace
-      ? [{ id: 'new-workspace-session', title: '新目录会话', group: '今天', time: '2026-07-28 10:00', live: false }]
-      : [{ id: 'old-workspace-session', title: '旧目录会话', group: '今天', time: '2026-07-28 09:00', live: false }]);
+      ? [{ id: 'new-workspace-session', title: '新目录会话', group: '今天', time: '2026-07-28 10:00', live: false, status: 'idle' }]
+      : [{ id: 'old-workspace-session', title: '旧目录会话', group: '今天', time: '2026-07-28 09:00', live: false, status: 'idle' }]);
     await route.fulfill({ status: 200, contentType: 'application/json', body });
   });
 
@@ -102,7 +194,7 @@ test('isolates the session list when the Workspace root switches', async ({ page
   // re-fetches the session list so the previous workspace's conversations no longer show.
   await emitAgentEvent(page, {
     type: 'session_snapshot',
-    session: { id: 'new-workspace-session', title: '新目录会话', group: '今天', time: '2026-07-28 10:00', live: false },
+    session: { id: 'new-workspace-session', title: '新目录会话', group: '今天', time: '2026-07-28 10:00', live: false, status: 'idle' },
     messages: [], steers: [], goal: null, thinking: false,
     cwd: `${fixtureWorkspaceRoot}-b/session`, files: [], reason: 'cwd',
   });

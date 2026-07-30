@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="50 3 1100 837" width="1100" height="837">
+<rect x="50" y="3" width="1100" height="837" fill="#F0ECE6" />
+<rect x="80" y="145" width="250" height="80" fill="#C8BFB0" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="475" y="145" width="250" height="80" fill="#C8BFB0" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="870" y="145" width="250" height="80" fill="#DDD8CF" stroke="#9A8E7E" stroke-width="2" rx="4" />
+<rect x="120" y="300" width="960" height="115" fill="#B8C4C0" stroke="#7A9188" stroke-width="2" rx="4" />
+<rect x="120" y="485" width="960" height="105" fill="#B4B8C8" stroke="#848A9E" stroke-width="2" rx="4" />
+<rect x="70" y="665" width="1060" height="155" fill="#DFE6E1" stroke="#7A9188" stroke-width="2" rx="4" />
+<rect x="115" y="735" width="260" height="60" fill="#B8C4C0" stroke="#7A9188" stroke-width="2" rx="4" />
+<rect x="470" y="735" width="260" height="60" fill="#B4B8C8" stroke="#848A9E" stroke-width="2" rx="4" />
+<rect x="825" y="735" width="260" height="60" fill="#B8B4C4" stroke="#887E9A" stroke-width="2" rx="4" />
+<path d="M 205 225 L 325 300" fill="none" stroke="#9A8E7E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 600 225 L 600 300" fill="none" stroke="#9A8E7E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 995 225 L 875 300" fill="none" stroke="#9A8E7E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 600 415 L 600 485" fill="none" stroke="#848A9E" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 600 590 L 600 665" fill="none" stroke="#7A9188" stroke-width="2" marker-end="url(#arrowhead)" />
+<path d="M 925 665 L 925 590" fill="none" stroke="#887E9A" stroke-width="2" marker-end="url(#arrowhead)" />
+<text x="600" y="58" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="30" fill="#4A4540" text-anchor="middle">Pi UI 多 Session 后台运行：全局架构</text>
+<text x="600" y="91" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#908A84" text-anchor="middle">观察与导航向下发出命令 · Runtime 向上广播定向事件</text>
+<text x="205" y="181" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">Browser Tab A</text>
+<text x="205" y="201.8" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">/sessions/A</text>
+<text x="600" y="181" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">Browser Tab B</text>
+<text x="600" y="201.8" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">/sessions/B</text>
+<text x="995" y="181" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">New Tab</text>
+<text x="995" y="201.8" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="16" fill="#4A4540" text-anchor="middle">/  欢迎态</text>
+<text x="600" y="342.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">Workspace</text>
+<text x="600" y="364.6" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">TabState(activeSessionId)  +  Session Store[sessid]</text>
+<text x="600" y="386.7" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">草稿 / Canvas / 未读完成状态按 Session 隔离</text>
+<text x="600" y="522.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">Core Agent Gateway</text>
+<text x="600" y="544.6" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">Session-scoped API  +  Workspace SSE Router</text>
+<text x="600" y="566.7" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle">所有命令与事件显式携带 sessionId</text>
+<text x="600" y="748.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="17" fill="#4A4540" text-anchor="middle"></text>
+<text x="600" y="701" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="19" fill="#7A9188" text-anchor="middle">Core / Pi · Map&lt;sessionId, SessionRuntime&gt;</text>
+<text x="245" y="770.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">A · running · cwd A</text>
+<text x="600" y="770.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">B · idle · cwd B</text>
+<text x="955" y="770.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="15" fill="#4A4540" text-anchor="middle">C · completed · cwd C</text>
+<text x="265" y="251.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">Tab-local</text>
+<text x="600" y="251.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">Tab-local</text>
+<text x="935" y="251.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">未绑定</text>
+<text x="600" y="439" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">prompt / steer / file</text>
+<text x="600" y="616.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">按 sessionId 路由</text>
+<text x="925" y="616.5" font-family="Virgil, Segoe UI Emoji, sans-serif" font-size="13" fill="#908A84" text-anchor="middle">SSE：running / completed / error</text>
+
+<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#4A4540" /></marker></defs>
+</svg>
