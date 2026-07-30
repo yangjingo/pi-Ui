@@ -2,11 +2,19 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import type { Message, TrajStep } from '../../core/agent/protocol';
+import {
+  SKILL_ACTIVATION_TEMPLATE,
+  SKILL_CREATE_DEFAULT_DESC,
+  SKILL_CREATE_DEFAULT_TASK,
+  SKILL_CREATE_FALLBACK_NAME,
+  SKILL_CREATE_MD_TEMPLATE,
+  SKILL_REFERENCES_PREFIX,
+} from './prompts';
 
 const SKILL_META_FILE = '.skillhub.json';
-const MAX_SKILL_FILES = 200;
-const MAX_SKILL_FILE_BYTES = 256 * 1024;
-const MAX_SKILL_TOTAL_BYTES = 2 * 1024 * 1024;
+const MAX_SKILL_FILES = 500;
+const MAX_SKILL_FILE_BYTES = 50 * 1024 * 1024;
+const MAX_SKILL_TOTAL_BYTES = 100 * 1024 * 1024;
 
 /** A local, workspace-owned Skill. Remote sources intentionally do not exist here. */
 export interface SharedSkill {
@@ -89,7 +97,7 @@ function trajectoryText(steps: TrajStep[]): string {
 
 function suggestedName(task: string): string {
   const title = task.replace(/\s+/g, ' ').replace(/^\/\S+\s*/u, '').trim();
-  return clip(title || '复用工作流', 32).replace(/[\r\n]/g, ' ').trim() || '复用工作流';
+  return clip(title || SKILL_CREATE_FALLBACK_NAME, 32).replace(/[\r\n]/g, ' ').trim() || SKILL_CREATE_FALLBACK_NAME;
 }
 
 /** Resolves explicitly-invoked local skills immediately before Pi receives a prompt. */
@@ -229,11 +237,14 @@ export class SkillHarness {
         .filter(path => path.toLowerCase() !== 'skill.md')
         .sort((a, b) => a.localeCompare(b));
       const references = supportingFiles.length
-        ? `\n\nSupporting files are available locally in ${join(this.skillRoot(), skill.id)}: ${supportingFiles.join(', ')}`
+        ? `\n\n${SKILL_REFERENCES_PREFIX}${supportingFiles.join(', ')}`
         : '';
       const request = prompt.replace(matcher, (_match, prefix: string) => prefix).trim();
       const safeName = skill.name.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-      const activation = `<activated_skill name="${safeName}">\n${body}${references}\n</activated_skill>`;
+      const activation = SKILL_ACTIVATION_TEMPLATE
+        .replace('{{name}}', safeName)
+        .replace('{{body}}', body)
+        .replace('{{references}}', references);
       return request ? `${activation}\n\n<user_request>\n${request}\n</user_request>` : activation;
     }
     return prompt;
@@ -242,12 +253,15 @@ export class SkillHarness {
   /** Convert one completed Agent turn into a reviewable, local Skill package. The harness owns
    * this projection so the browser only selects a turn; it never fabricates or writes Skills. */
   createFromTurn(source: SkillTurnSource): GeneratedSkillDraft {
-    const task = clip(source.user?.text || '复用当前 Agent 工作流', 2_400);
+    const task = clip(source.user?.text || SKILL_CREATE_DEFAULT_TASK, 2_400);
     const answer = agentText(source.agent);
     const trajectory = trajectoryText(source.agent.traj || []);
     const name = suggestedName(task);
-    const desc = `基于一轮 Agent 对话${source.agent.traj?.length ? `与 ${source.agent.traj.length} 步轨迹` : ''}沉淀的本地工作流`;
-    const skillMd = `---\nname: ${name}\ndescription: ${desc}\n---\n\n# 适用场景\n${task}\n\n# 执行方式\n\n1. 先确认用户的目标、约束与现有工作区状态。\n2. 参考本 Skill 的来源轨迹，按需复用有效的工具与检查步骤。\n3. 交付前说明完成内容、验证结果与仍需用户确认的事项。\n\n# 来源材料\n\n本 Skill 由一轮已完成的 Agent 对话生成。需要具体结论、措辞或操作细节时，读取同目录的：\n\n- \`references/source-turn.md\`：用户请求与 Agent 最终答复\n- \`references/trajectory.md\`：本轮执行轨迹\n`;
+    const desc = `${SKILL_CREATE_DEFAULT_DESC}${source.agent.traj?.length ? `与 ${source.agent.traj.length} 步轨迹` : ''}`;
+    const skillMd = SKILL_CREATE_MD_TEMPLATE
+      .replace('{{name}}', name)
+      .replace('{{desc}}', desc)
+      .replace('{{task}}', task);
     return {
       name,
       desc,
