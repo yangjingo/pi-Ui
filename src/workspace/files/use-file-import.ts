@@ -18,6 +18,7 @@ export function useFileImport() {
   const [dropMsg, setDropMsg] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<FileImportProgress | null>(null);
   const uploadRef = useRef<HTMLInputElement | null>(null);
+  const folderRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
 
   const ingestFiles = async (files: File[]) => {
@@ -27,7 +28,8 @@ export function useFileImport() {
     for (const [index, file] of files.entries()) {
       setImportProgress({ completed: index, total: files.length, fileName: file.name });
       try {
-        const result = await importWorkspaceFile(file);
+        const relative = ((file as any).webkitRelativePath || file.name).replace(/\\/g, '/').replace(/^\/+/, '');
+        const result = await importWorkspaceFile(file, relative === file.name ? undefined : relative);
         if (result.ok) {
           ok++;
           if (isOfficeFile(file.name)) office++;
@@ -61,5 +63,5 @@ export function useFileImport() {
     if (dragDepthRef.current === 0) setFileDrop(false);
   };
 
-  return { fileDrop, dropMsg, importProgress, uploadRef, ingestFiles, onFileDrop, onWorkspaceDragEnter, onWorkspaceDragLeave };
+  return { fileDrop, dropMsg, importProgress, uploadRef, folderRef, ingestFiles, onFileDrop, onWorkspaceDragEnter, onWorkspaceDragLeave };
 }

@@ -21,23 +21,24 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export async function importWorkspaceFile(file: File): Promise<{ ok: boolean; error?: string; file?: ImportedWorkspaceFile }> {
+export async function importWorkspaceFile(file: File, destPath?: string): Promise<{ ok: boolean; error?: string; file?: ImportedWorkspaceFile }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const type = fileTypeOf(file.name);
+  const targetPath = destPath || file.name;
   const isBinaryImport = isOfficeFile(file.name) || type === 'pdf' || type === 'png' || type === 'binary';
   const result = isBinaryImport
-    ? await agentClient.importFile(file.name, bytesToBase64(bytes))
+    ? await agentClient.importFile(targetPath, bytesToBase64(bytes))
     : bytes.includes(0)
       ? { ok: false, error: 'unsupported binary' }
-      : await agentClient.saveFile(file.name, new TextDecoder().decode(bytes));
+      : await agentClient.saveFile(targetPath, new TextDecoder().decode(bytes));
   if (!result.ok) return result;
   return {
     ok: true,
     file: {
       id: `${file.name}:${file.size}:${file.lastModified}`,
-      path: file.name,
-      name: file.name,
-      type: fileTypeOf(file.name),
+      path: targetPath,
+      name: targetPath.replace(/\\/g, '/').split('/').pop() || file.name,
+      type: fileTypeOf(targetPath),
     },
   };
 }

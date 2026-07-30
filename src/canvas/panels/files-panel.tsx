@@ -22,6 +22,8 @@ export function FilesPanel({ active: visible, query, setQuery, importer }: Works
   const [searchIndex, setSearchIndex] = useState(0);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const fileTreeRef = useRef<HTMLDivElement | null>(null);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const uploadWrapRef = useRef<HTMLDivElement | null>(null);
   const files = active.files;
   const fileCount = countFiles(files);
   const filteredFiles = useMemo(() => filterFileTree(files, query), [files, query]);
@@ -58,6 +60,16 @@ export function FilesPanel({ active: visible, query, setQuery, importer }: Works
     });
   }, [visible, canvasTab, filteredFiles]);
 
+  // Close upload menu on outside click
+  useEffect(() => {
+    if (!uploadMenuOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (uploadWrapRef.current && !uploadWrapRef.current.contains(e.target as Node)) setUploadMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointer);
+    return () => window.removeEventListener('pointerdown', onPointer);
+  }, [uploadMenuOpen]);
+
   const clearSearch = () => {
     setQuery('');
     setSearchIndex(0);
@@ -73,7 +85,10 @@ export function FilesPanel({ active: visible, query, setQuery, importer }: Works
     <section id="workspace-panel-files" className={`ws-panel${visible ? ' active' : ''}`} data-testid="files-panel" role="tabpanel" aria-labelledby="workspace-tab-files">
       <div className="ws-head">
         <div><b>{text(active.title)}</b><small title={cwd || undefined}>{cwd ? text(cwd) : '工作目录中的可用产物'}</small></div>
-        <button className="ws-import" data-testid="ws-import" title="导入文本或 Office 文件" onClick={() => importer.uploadRef.current?.click()}><Icon name="paperclip" />导入</button>
+        <div className="skill-upload-wrap" ref={uploadWrapRef}>
+          <button className="ws-import" data-testid="ws-import" title="导入文件或文件夹" onClick={() => setUploadMenuOpen(o => !o)}><Icon name="folder" />导入</button>
+          {uploadMenuOpen && <div className="skill-upload-menu" data-testid="ws-upload-menu"><button type="button" onClick={() => { setUploadMenuOpen(false); importer.uploadRef.current?.click(); }}><Icon name="file" />文件</button><button type="button" onClick={() => { setUploadMenuOpen(false); importer.folderRef.current?.click(); }}><Icon name="folder" />文件夹</button></div>}
+        </div>
       </div>
       <input
         ref={importer.uploadRef}
@@ -82,6 +97,17 @@ export function FilesPanel({ active: visible, query, setQuery, importer }: Works
         type="file"
         multiple
         accept=".md,.markdown,.txt,.csv,.tsv,.html,.htm,.json,.docx,.docm,.dotx,.dotm,.xlsx,.xlsm,.xltx,.xltm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.png,.jpg,.jpeg,.gif,.svg,.webp,.pdf,.zip,.tar,.gz,.tgz,.bz2,.7z,.xz,text/*"
+        onChange={(event) => {
+          void importer.ingestFiles(Array.from(event.currentTarget.files || []));
+          event.currentTarget.value = '';
+        }}
+      />
+      <input
+        ref={importer.folderRef}
+        className="visually-hidden"
+        data-testid="ws-folder-input"
+        type="file"
+        {...({ webkitdirectory: '', directory: '' } as any)}
         onChange={(event) => {
           void importer.ingestFiles(Array.from(event.currentTarget.files || []));
           event.currentTarget.value = '';
@@ -121,7 +147,7 @@ export function FilesPanel({ active: visible, query, setQuery, importer }: Works
       {importer.importProgress && <div className="ws-import-progress" data-testid="ws-import-progress" role="status" aria-live="polite">正在导入到当前工作区 {importer.importProgress.completed}/{importer.importProgress.total} · {text(importer.importProgress.fileName)}</div>}
       {importer.dropMsg && <div className="drop-msg" data-testid="drop-msg" role="status" aria-live="polite">{importer.dropMsg}</div>}
       {files.length === 0 ? (
-        <div className="ws-empty ws-empty-files"><Icon name="folder" /><b>还没有可预览的文件</b><span>导入文本、Word、Excel 或 PowerPoint，或让 Agent 创建内容。</span><button onClick={() => importer.uploadRef.current?.click()}><Icon name="paperclip" />导入文件</button></div>
+        <div className="ws-empty ws-empty-files"><Icon name="folder" /><b>还没有可预览的文件</b><span>导入文本、Word、Excel 或 PowerPoint，或让 Agent 创建内容。</span><button onClick={() => setUploadMenuOpen(o => !o)}><Icon name="folder" />导入文件</button></div>
       ) : filteredFiles.length === 0 ? (
         <div className="ws-empty ws-empty-search"><span>没有匹配“{text(query)}”的文件</span><button onClick={clearSearch}>清除搜索</button></div>
       ) : (

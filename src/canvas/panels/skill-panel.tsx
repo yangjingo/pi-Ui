@@ -32,6 +32,9 @@ export function SkillPanel() {
   const [fileDraft, setFileDraft] = useState('');
   const [closedFolders, setClosedFolders] = useState<Set<string>>(new Set());
   const uploadRef = useRef<HTMLInputElement | null>(null);
+  const folderRef = useRef<HTMLInputElement | null>(null);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const uploadWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!selected) return;
@@ -47,6 +50,16 @@ export function SkillPanel() {
   useEffect(() => {
     setFileDraft(selected?.files[selectedFilePath] || '');
   }, [selected, selectedFilePath]);
+
+  // Close upload menu on outside click
+  useEffect(() => {
+    if (!uploadMenuOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (uploadWrapRef.current && !uploadWrapRef.current.contains(e.target as Node)) setUploadMenuOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointer);
+    return () => window.removeEventListener('pointerdown', onPointer);
+  }, [uploadMenuOpen]);
 
   const openSkill = (id: string) => {
     setSelectedId(id);
@@ -177,7 +190,7 @@ export function SkillPanel() {
   const files = selected ? (
     <section className="model-config-files skill-config-files" data-testid="skill-files-panel">
       <aside className="model-config-file-tree" aria-label="Skill 文件">
-        <div className="model-config-files-head"><b>Files</b><span>{Object.keys(selected.files).length}</span><button type="button" className="skill-file-upload" data-testid="skill-file-upload" disabled={saving} onClick={() => uploadRef.current?.click()}><Icon name="paperclip" />上传</button><input ref={uploadRef} type="file" multiple hidden onChange={event => { void uploadFiles(Array.from(event.target.files || [])); event.target.value = ''; }} /></div>
+        <div className="model-config-files-head"><b>Files</b><span>{Object.keys(selected.files).length}</span><div className="skill-upload-wrap" ref={uploadWrapRef}><button type="button" className="skill-file-upload" data-testid="skill-file-upload" disabled={saving} onClick={() => setUploadMenuOpen(o => !o)}><Icon name="folder" />上传</button>{uploadMenuOpen && <div className="skill-upload-menu" data-testid="skill-upload-menu"><button type="button" onClick={() => { setUploadMenuOpen(false); uploadRef.current?.click(); }}><Icon name="file" />文件</button><button type="button" onClick={() => { setUploadMenuOpen(false); folderRef.current?.click(); }}><Icon name="folder" />文件夹</button></div>}</div><input ref={uploadRef} type="file" multiple data-testid="skill-file-input" hidden onChange={event => { void uploadFiles(Array.from(event.target.files || [])); event.target.value = ''; }} /><input ref={folderRef} type="file" {...({ webkitdirectory: '', directory: '' } as any)} data-testid="skill-folder-input" hidden onChange={event => { void uploadFiles(Array.from(event.target.files || [])); event.target.value = ''; }} /></div>
         <div className="file-tree" role="tree" aria-label={`${selected.name} 的文件`} onKeyDown={navigateFileTree} onFocusCapture={keepTreeRovingFocus}>
           <FileTree list={skillFileTree} active={selectedFilePath} idPrefix="skill-file" onToggle={toggleFolder} onOpen={node => setSelectedFilePath(node.path || node.name)} />
         </div>

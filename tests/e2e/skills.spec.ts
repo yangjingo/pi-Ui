@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { emptySnapshot, installMockAgent } from '../fixtures/agent';
 
@@ -88,7 +89,11 @@ test('keeps uploaded supporting files and saves per-file edits', async ({ page }
   await page.getByTestId('skill-hub').click();
   await page.getByTestId('skill-item').click();
   await page.getByTestId('config-workbench-files-tab').click();
-  await page.getByTestId('skill-files-panel').locator('input[type=file]').setInputFiles([
+
+  await page.getByTestId('skill-file-upload').click();
+  await expect(page.getByTestId('skill-upload-menu')).toBeVisible();
+  await page.getByTestId('skill-upload-menu').getByRole('button', { name: '文件', exact: true }).click();
+  await page.locator('input[data-testid=skill-file-input]').setInputFiles([
     { name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\nUPLOAD_MARKER') },
     { name: 'template.html', mimeType: 'text/html', buffer: Buffer.from('<h1>TEMPLATE_MARKER</h1>') },
   ]);
@@ -101,4 +106,36 @@ test('keeps uploaded supporting files and saves per-file edits', async ({ page }
   await page.getByTestId('skill-file-save').click();
   await expect.poll(() => current.files['notes.md']).toContain('REWRITTEN_MARKER');
   expect(current.files['template.html']).toContain('TEMPLATE_MARKER');
+});
+
+test('uploads a whole folder into a Skill while keeping nested relative paths', async ({ page }, testInfo) => {
+  let current: typeof skill & { files: Record<string, string> } = structuredClone(skill);
+  await installMockAgent(page, { snapshot: emptySnapshot, skills: [current] });
+  await page.route('**/api/skills', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([current]) });
+      return;
+    }
+    const draft = route.request().postDataJSON() as typeof current;
+    current = { ...current, ...draft, source: 'workspace' };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, skill: current }) });
+  });
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('skill-hub').click();
+  await page.getByTestId('skill-item').click();
+  await page.getByTestId('config-workbench-files-tab').click();
+
+  await page.getByTestId('skill-file-upload').click();
+  await expect(page.getByTestId('skill-upload-menu')).toBeVisible();
+
+  // Open the upload menu, pick "文件夹", then feed a real directory to the webkitdirectory input.
+  await page.getByTestId('skill-upload-menu').getByRole('button', { name: '文件夹', exact: true }).click();
+  const folder = testInfo.outputPath('snippet-pack');
+  await mkdir(`${folder}/refs`, { recursive: true });
+  await writeFile(`${folder}/refs/a.md`, '# A\nFOLDER_MARKER', 'utf8');
+  await page.locator('input[data-testid=skill-folder-input]').setInputFiles(folder);
+
+  await expect.poll(() => current.files['snippet-pack/refs/a.md']).toContain('FOLDER_MARKER');
+  await expect(page.getByTestId('file-item').filter({ hasText: 'a.md' })).toHaveCount(1);
 });
