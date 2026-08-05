@@ -4,6 +4,7 @@ import {
   peekMermaidResult,
   renderMermaid,
   scheduleMermaidRender,
+  t,
 } from '../../ui';
 import type { RenderResult } from 'mermaid';
 
@@ -18,10 +19,8 @@ interface MermaidState {
   error?: string;
 }
 
-const EMPTY_DIAGRAM = 'flowchart LR\n  A[空图]';
-
 export const MermaidRenderer = memo(function MermaidRenderer({ name, source }: MermaidRendererProps) {
-  const diagram = source.trim() ? source : EMPTY_DIAGRAM;
+  const diagram = source.trim() ? source : `flowchart LR\n  A[${t('renderer.emptyDiagram')}]`;
   const scope = `mermaid-${useId().replace(/:/g, '')}`;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [state, setState] = useState<MermaidState>({ source: '' });
@@ -46,7 +45,7 @@ export const MermaidRenderer = memo(function MermaidRenderer({ name, source }: M
         .catch(reason => {
           if (!cancelled) setState({
             source: diagram,
-            error: reason instanceof Error ? reason.message : 'Mermaid 图表无法渲染',
+            error: reason instanceof Error ? reason.message : t('renderer.mermaidFailed'),
           });
         });
     });
@@ -65,15 +64,15 @@ export const MermaidRenderer = memo(function MermaidRenderer({ name, source }: M
     <div className="r-mermaid" data-testid="renderer-mermaid">
       <div className="r-doc">
         {result ? (
-          <div ref={hostRef} className="mermaid" aria-label={`${name} Mermaid 预览`} />
+          <div ref={hostRef} className="mermaid" aria-label={t('renderer.mermaidPreview', { name })} />
         ) : error ? (
-          <div className="r-diagram-error" data-testid="renderer-mermaid-error">
-            <b>无法渲染 Mermaid 图表</b>
+          <div className="r-diagram-error" data-testid="renderer-mermaid-error" role="alert">
+            <b>{t('renderer.mermaidFailed')}</b>
             <span>{error}</span>
-            <pre><code>{diagram.slice(0, 20_000)}{diagram.length > 20_000 ? '\n…（内容已截断）' : ''}</code></pre>
+            <pre><code>{diagram.slice(0, 20_000)}{diagram.length > 20_000 ? `\n${t('renderer.truncated')}` : ''}</code></pre>
           </div>
         ) : (
-          <div className="r-diagram-loading" role="status" data-testid="renderer-mermaid-loading">正在渲染 Mermaid…</div>
+          <div className="r-diagram-loading" role="status" data-testid="renderer-mermaid-loading">{t('renderer.loadingMermaid')}</div>
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { MdText } from '../../ui';
+import { MdText, t } from '../../ui';
 
 interface EditableMarkdownCanvasProps {
   path: string;
@@ -69,7 +69,7 @@ export function EditableMarkdownCanvas({
     <div className="r-html-wrap" data-testid="md-canvas-editor">
       {showTabs && (
         <div className="r-html-toolbar">
-          <div className="r-html-bar" role="tablist" aria-label={`${path} 视图`}>
+          <div className="r-html-bar" role="tablist" aria-label={t('renderer.viewMode', { name: path })}>
             <button
               type="button"
               role="tab"
@@ -78,7 +78,7 @@ export function EditableMarkdownCanvas({
               className={mode === 'preview' ? 'on' : ''}
               onClick={switchToPreview}
             >
-              预览
+              {t('renderer.preview')}
             </button>
             <button
               type="button"
@@ -89,7 +89,7 @@ export function EditableMarkdownCanvas({
               disabled={!canEdit}
               onClick={switchToSource}
             >
-              源码
+              {t('renderer.source')}
             </button>
           </div>
         </div>
@@ -101,14 +101,14 @@ export function EditableMarkdownCanvas({
               className="r-md-preview"
               role={canEdit ? 'textbox' : 'document'}
               tabIndex={canEdit ? 0 : -1}
-              aria-label={canEdit ? '可直接编辑' : undefined}
+              aria-label={canEdit ? t('renderer.directEdit') : undefined}
               onClick={switchToSource}
               onDoubleClick={switchToSource}
               onKeyDown={onPreviewInputDown}
             >
-              <MdText className="r-doc" text={value || '(空文档)'} />
+              <MdText className="r-doc" text={value || t('renderer.emptyDocument')} />
             </div>
-          ) : <div className="r-code" role="tabpanel" aria-label={`${path} 源码编辑`}><textarea ref={editorRef} className="r-edit-area" data-testid="markdown-edit-body" spellCheck={false} value={value} onChange={event => update(event.target.value)} /></div>
+          ) : <div className="r-code" role="tabpanel" aria-label={t('renderer.sourceEdit', { name: path })}><textarea ref={editorRef} className="r-edit-area" data-testid="markdown-edit-body" spellCheck={false} value={value} onChange={event => update(event.target.value)} /></div>
         }
       </div>
     </div>

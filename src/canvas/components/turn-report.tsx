@@ -1,91 +1,88 @@
-// Message-level task detail shown in Canvas. Outcome and artifacts lead; execution evidence and
-// performance metadata follow. This keeps it useful without feeling like a separate dashboard.
-
-import { Icon, trajIcon, fileIcon, text, fmtMs, fmtTok, MdText } from '../../ui';
+import { Icon, t, text, trajectoryLabel, trajIcon } from '../../ui';
 import { useWorkspace } from '../../workspace';
 
 export function TurnReport({ mi }: { mi: number }) {
-  const { active, showStep, openInCanvas } = useWorkspace();
+  const { active, showStep } = useWorkspace();
   const message = active.messages[mi];
-  if (!message || message.role !== 'agent') return <div className="turn-empty">该消息没有执行记录。</div>;
+  if (!message || message.role !== 'agent') {
+    return <div className="turn-empty">{t('run.noDetails')}</div>;
+  }
 
   const trajectory = message.traj ?? [];
-  const tools = trajectory.filter(step => step.t !== 'think');
-  const thinking = trajectory.filter(step => step.t === 'think');
-  const done = tools.filter(step => step.status === 'done').length;
-  const artifacts = message.artifacts ?? [];
-  const answer = (message.blocks || [])
-    .filter(block => block.kind === 'text')
-    .map(block => block.kind === 'text' ? block.text : '')
-    .filter(Boolean).join('\n\n') || message.intro || message.outro || '';
-  const complete = tools.length === done && message.status !== 'running';
+  const toolCount = trajectory.filter(step => step.t !== 'think').length;
+  const thinkingCount = trajectory.length - toolCount;
 
   return (
-    <div className="turn-report" data-testid="turn-report">
-      <header className="turn-summary">
-        <span className={`turn-summary-icon${complete ? ' done' : ' live'}`}><Icon name={complete ? 'check' : 'refresh'} /></span>
-        <div className="turn-summary-copy"><span>本轮任务</span><h2>{complete ? '执行完成' : '正在执行'}</h2><p>{tools.length} 次工具调用 · {thinking.length} 轮思考 · {artifacts.length} 个本轮产物{message.stats ? ` · ${fmtMs(message.stats.duration)}` : ''}</p></div>
+    <div className="turn-report run-overview" data-testid="turn-report">
+      <header className="run-overview-head">
+        <div>
+          <span>{t('run.overviewKicker')}</span>
+          <h2>{t('run.details')}</h2>
+        </div>
+        {message.stats && <time>{formatDuration(message.stats.duration)}</time>}
       </header>
 
-      {answer && (
-        <section className="tr-section tr-result">
-          <div className="tr-sec-head"><span>结果</span><small>Agent 最终输出</small></div>
-          <MdText className="tr-out" text={answer} />
-        </section>
-      )}
-
-      {artifacts.length > 0 && (
-        <section className="tr-section">
-          <div className="tr-sec-head"><span>本轮产物</span><small>{artifacts.length} 个文件</small></div>
-          <div className="tr-arts">
-            {artifacts.map((artifact, index) => (
-              <button key={`${artifact.name}-${index}`} className="tr-art" data-testid="turn-artifact" onClick={() => openInCanvas(artifact.path || artifact.name)}>
-                <span className={`tree-ico ftype-${artifact.type}`}><Icon name={fileIcon(artifact.type)} /></span>
-                <span><b>{text(artifact.name)}</b><small>{text(artifact.label)}</small></span>
-                <span className="arr">↗</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="tr-section">
-        <div className="tr-sec-head"><span>执行过程</span><small>{trajectory.length} 个事件</small></div>
-        <div className="tr-timeline">
-          {trajectory.length === 0 && <div className="tr-empty">本轮没有工具调用。</div>}
+      <section className="run-section">
+        <div className="run-section-head">
+          <b>{t('run.trajectory')}</b>
+          <small>{t('run.toolsCount', { count: toolCount })}{thinkingCount ? ` · ${t('run.thinkingCount', { count: thinkingCount })}` : ''}</small>
+        </div>
+        <div className="run-trajectory">
+          {trajectory.length === 0 && <div className="tr-empty">{t('run.noToolCalls')}</div>}
           {trajectory.map((step, si) => (
-            <button key={step.id || si} className={`tr-tl-row ${step.status}${step.t === 'think' ? ' think' : ''}`} data-testid="turn-step" onClick={() => showStep(mi, si)}>
-              <span className="tr-tl-rail" />
-              <span className={`tr-tl-ico ${step.status}`}><Icon name={trajIcon(step.t)} /></span>
-              <span className="tr-tl-main"><b>{text(step.title)}</b><small>{text(step.det || '无附加信息')}</small></span>
-              <span className="tr-tl-time">{text(step.time)}</span>
-              <span className="tr-tl-arr">↗</span>
+            <button
+              type="button"
+              key={step.id || si}
+              className={`run-step ${step.status}${step.t === 'think' ? ' thinking' : ''}${step.error ? ' failed' : ''}`}
+              data-testid="turn-step"
+              data-kind={step.t}
+              onClick={() => showStep(mi, si)}
+            >
+              <span className={`run-step-icon ${step.status}`}><Icon name={trajIcon(step.t)} /></span>
+              <span className="run-step-copy">
+                <b>{trajectoryLabel(step.t, step.shell)}</b>
+                {step.det && <small>{text(step.det)}</small>}
+              </span>
+              <time>{text(step.time)}</time>
+              <Icon name="chevron" className="run-step-open" />
             </button>
           ))}
         </div>
       </section>
 
       {message.stats && (
-        <section className="tr-section">
-          <div className="tr-sec-head"><span>运行信息</span><small>诊断指标</small></div>
-          <dl className="tr-kpis" data-testid="turn-kpis">
-            <Metric value={fmtTok(message.stats.totalTokens)} label="响应总 token" />
-            <Metric value={fmtTok(message.stats.input)} label="未缓存输入" />
-            <Metric value={fmtTok(message.stats.output)} label="输出 token" />
-            <Metric value={fmtMs(message.stats.ttft)} label="首字延迟" />
-            <Metric value={message.stats.tpot > 0 ? `${message.stats.tpot.toFixed(0)}ms` : '—'} label="每 token" />
-            <Metric value={fmtMs(message.stats.duration)} label="总耗时" />
-            <Metric value={fmtTok(message.stats.cacheRead)} label="缓存读取" />
-            <Metric value={fmtTok(message.stats.cacheWrite)} label="缓存写入" />
-            <Metric value={`${Math.round((message.stats.cacheHitRate || 0) * 100)}%`} label="缓存命中率" />
-            <Metric value={message.stats.contextPrefixStable === false ? '已变化' : '稳定'} label={`Context 前缀${message.stats.contextPrefix ? ` · ${message.stats.contextPrefix}` : ''}`} />
+        <details className="run-diagnostics" data-testid="turn-diagnostics">
+          <summary>
+            <span>{t('run.diagnostics')}</span>
+            <Icon name="chevron" />
+          </summary>
+          <dl>
+            <Metric label="TTFT" value={`${message.stats.ttft} ms`} />
+            <Metric label="TPOT" value={`${message.stats.tpot.toFixed(2)} ms/token`} />
+            <Metric label="TPS" value={message.stats.tpot > 0 ? `${(1_000 / message.stats.tpot).toFixed(2)} token/s` : '—'} />
+            <Metric label="IN" value={exactTokens(message.stats.input)} />
+            <Metric label="OUT" value={exactTokens(message.stats.output)} />
+            <Metric label="CACHE R" value={exactTokens(message.stats.cacheRead)} />
+            <Metric label="CACHE W" value={exactTokens(message.stats.cacheWrite)} />
+            <Metric label="Total" value={exactTokens(message.stats.totalTokens)} />
+            <Metric label={t('run.duration')} value={`${message.stats.duration} ms`} />
+            {message.stats.cacheHitRate != null && <Metric label="Cache hit" value={`${(message.stats.cacheHitRate * 100).toFixed(1)}%`} />}
+            {message.stats.contextPrefix && <Metric label={t('run.context')} value={message.stats.contextPrefix} />}
           </dl>
-        </section>
+        </details>
       )}
     </div>
   );
 }
 
 function Metric({ value, label }: { value: string; label: string }) {
-  return <div className="tr-kpi"><dt>{label}</dt><dd>{value}</dd></div>;
+  return <div><dt>{label}</dt><dd>{value}</dd></div>;
+}
+
+function exactTokens(value: number | undefined): string {
+  return value == null ? '—' : `${value.toLocaleString('en-US')} tok`;
+}
+
+function formatDuration(value: number): string {
+  return value < 1_000 ? `${value}ms` : `${(value / 1_000).toFixed(1)}s`;
 }

@@ -6,10 +6,11 @@ import {
   isOfficeFile,
   isOfficeWorkbookPreview,
   parseCSV,
+  WorkspaceFileRequestError,
   workspaceFileUrl,
   type OfficeWorkbookPreview,
 } from '../../workspace';
-import { text, Icon, fileIcon } from '../../ui';
+import { highlightCode, languageOfPath, t, text, Icon, fileIcon } from '../../ui';
 import { useWorkspace } from '../../workspace';
 import { EditableMarkdownCanvas } from './editable-markdown-canvas';
 
@@ -28,19 +29,15 @@ function isRevealPresentation(content: string): boolean {
     && /class\s*=\s*["'][^"']*\bslides\b/i.test(content);
 }
 
-const PRESENTATION_PREVIEW_BRIDGE = `
-<style data-pi-canvas-preview>
-  .reveal .slides section:not(.present) .pretext-stage {
-    visibility: hidden !important;
-    contain: strict;
-  }
-</style>
-<script data-pi-canvas-preview>
+const HTML_PERFORMANCE_BRIDGE = `
+<script data-pi-canvas-performance>
 (() => {
+  if (window.__piCanvasPreviewBudget) return;
+  window.__piCanvasPreviewBudget = true;
   const SOURCE = '${HTML_PREVIEW_SOURCE}';
 
-  // A presentation can own an endless animation loop. Batch all preview RAF callbacks at
-  // 30fps so one iframe cannot monopolize the Canvas rendering thread.
+  // Preview content can own an endless animation loop. Batch iframe RAF callbacks at 30fps
+  // so complex HTML cannot monopolize the workbench rendering thread.
   const nativeRaf = window.requestAnimationFrame.bind(window);
   let previewFrame = 0;
   let previewFrameId = 0;
@@ -67,6 +64,28 @@ const PRESENTATION_PREVIEW_BRIDGE = `
   window.cancelAnimationFrame = (id) => {
     previewCallbacks.delete(id);
   };
+
+  const publishReady = () => window.requestAnimationFrame(() => {
+    parent.postMessage({ source: SOURCE, type: 'preview-ready' }, '*');
+  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', publishReady, { once: true });
+  } else {
+    publishReady();
+  }
+})();
+</script>`;
+
+const PRESENTATION_PREVIEW_BRIDGE = `
+<style data-pi-canvas-preview>
+  .reveal .slides section:not(.present) .pretext-stage {
+    visibility: hidden !important;
+    contain: strict;
+  }
+</style>
+<script data-pi-canvas-preview>
+(() => {
+  const SOURCE = '${HTML_PREVIEW_SOURCE}';
 
   let attachedReveal = null;
   const suspendedBackgrounds = new WeakMap();
@@ -187,23 +206,31 @@ const PRESENTATION_PREVIEW_BRIDGE = `
 })();
 </script>`;
 
-function presentationPreview(content: string): string {
+function injectPreviewBridge(content: string, bridge: string): string {
   const closingHead = content.search(/<\/head\s*>/i);
   if (closingHead >= 0) {
-    return `${content.slice(0, closingHead)}${PRESENTATION_PREVIEW_BRIDGE}${content.slice(closingHead)}`;
+    return `${content.slice(0, closingHead)}${bridge}${content.slice(closingHead)}`;
   }
-  return `${PRESENTATION_PREVIEW_BRIDGE}${content}`;
+  return `${bridge}${content}`;
+}
+
+function htmlPreview(content: string, presentation: boolean): string {
+  const bridge = presentation
+    ? `${HTML_PERFORMANCE_BRIDGE}${PRESENTATION_PREVIEW_BRIDGE}`
+    : HTML_PERFORMANCE_BRIDGE;
+  return injectPreviewBridge(content, bridge);
 }
 
 export function HtmlRenderer({ f }: { f: FileNode }) {
   const { getFileContent, getEditBuffer, setEditBuffer, enterEdit, editing } = useWorkspace();
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
   const [slideState, setSlideState] = useState<SlideState>(INITIAL_SLIDE_STATE);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const content = (editing ? getEditBuffer(f.path) : getFileContent(f.path)) || '';
   const presentation = useMemo(() => isRevealPresentation(content), [content]);
   const previewContent = useMemo(
-    () => presentation ? presentationPreview(content) : content,
+    () => htmlPreview(content, presentation),
     [content, presentation],
   );
   const sendSlideCommand = useCallback((command: SlideCommand) => {
@@ -215,13 +242,28 @@ export function HtmlRenderer({ f }: { f: FileNode }) {
   }, []);
   useEffect(() => {
     setSlideState(INITIAL_SLIDE_STATE);
+    setPreviewLoaded(false);
   }, [f.path, previewContent]);
   useEffect(() => {
-    if (!presentation) return;
+    if (mode !== 'preview' || !content.trim()) return;
+    const frame = iframeRef.current;
+    if (!frame) return;
+    setPreviewLoaded(false);
+    const frameId = window.requestAnimationFrame(() => {
+      frame.srcdoc = previewContent;
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [content, mode, previewContent]);
+  useEffect(() => {
     const receiveSlideState = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
       const data = event.data as Partial<SlideState> & { source?: string; type?: string };
-      if (data?.source !== HTML_PREVIEW_SOURCE || data.type !== 'slide-state') return;
+      if (data?.source !== HTML_PREVIEW_SOURCE) return;
+      if (data.type === 'preview-ready') {
+        setPreviewLoaded(true);
+        return;
+      }
+      if (!presentation || data.type !== 'slide-state') return;
       setSlideState({
         ready: Boolean(data.ready),
         index: Math.max(1, Number(data.index || 1)),
@@ -249,24 +291,27 @@ export function HtmlRenderer({ f }: { f: FileNode }) {
   return (
     <div className={`r-html-wrap${presentation ? ' is-presentation' : ''}`} data-testid="renderer-html" onKeyDown={onPresentationKeyDown}>
       <div className="r-html-toolbar">
-        <div className="r-html-bar" role="tablist" aria-label={`${f.name} 查看方式`}>
-          <button type="button" role="tab" aria-selected={mode === 'preview'} aria-controls="html-render-panel" className={mode === 'preview' ? 'on' : ''} data-testid="html-preview" onClick={() => setMode('preview')}>预览</button>
-          <button type="button" role="tab" aria-selected={mode === 'source'} aria-controls="html-render-panel" className={mode === 'source' ? 'on' : ''} data-testid="html-source" onClick={openSource}>源码</button>
+        <div className="r-html-bar" role="tablist" aria-label={t('renderer.viewMode', { name: f.name })}>
+          <button type="button" role="tab" aria-selected={mode === 'preview'} aria-controls="html-render-panel" className={mode === 'preview' ? 'on' : ''} data-testid="html-preview" onClick={() => setMode('preview')}>{t('renderer.preview')}</button>
+          <button type="button" role="tab" aria-selected={mode === 'source'} aria-controls="html-render-panel" className={mode === 'source' ? 'on' : ''} data-testid="html-source" onClick={openSource}>{t('renderer.source')}</button>
         </div>
         {presentation && mode === 'preview' && (
-          <div className="r-html-slide-controls" data-testid="html-slide-controls" aria-label="演示文稿翻页">
-            <button type="button" data-testid="html-slide-previous" aria-label="上一页" disabled={!slideState.ready} onClick={() => sendSlideCommand('previous')}><Icon name="chevron" /></button>
-            <output data-testid="html-slide-status" aria-live="polite">{slideState.ready ? `${slideState.index} / ${slideState.total}` : '加载中'}</output>
-            <button type="button" data-testid="html-slide-next" aria-label="下一页" disabled={!slideState.ready} onClick={() => sendSlideCommand('next')}><Icon name="chevron" /></button>
+          <div className="r-html-slide-controls" data-testid="html-slide-controls" aria-label={t('renderer.presentationControls')}>
+            <button type="button" data-testid="html-slide-previous" aria-label={t('renderer.previousPage')} disabled={!slideState.ready} onClick={() => sendSlideCommand('previous')}><Icon name="chevron" /></button>
+            <output data-testid="html-slide-status" aria-live="polite">{slideState.ready ? `${slideState.index} / ${slideState.total}` : t('common.loading')}</output>
+            <button type="button" data-testid="html-slide-next" aria-label={t('renderer.nextPage')} disabled={!slideState.ready} onClick={() => sendSlideCommand('next')}><Icon name="chevron" /></button>
           </div>
         )}
       </div>
-      <div id="html-render-panel" className="r-html-stage" role="tabpanel" aria-label={mode === 'preview' ? 'HTML 预览' : 'HTML 源码'}>
+      <div id="html-render-panel" className={`r-html-stage${mode === 'preview' && content.trim() && !previewLoaded ? ' is-loading' : ''}`} role="tabpanel" aria-label={mode === 'preview' ? t('renderer.htmlPreview') : t('renderer.htmlSource')}>
         {mode === 'preview' ? (
           content.trim() ? (
-            <iframe ref={iframeRef} className="r-html" title={f.name} sandbox="allow-scripts" srcDoc={previewContent} onLoad={() => sendSlideCommand('state')} />
+            <>
+              {!previewLoaded && <div className="r-html-loading" role="status"><span className="preview-loading-mark" />{t('renderer.loadingHtml')}</div>}
+              <iframe ref={iframeRef} className="r-html" title={f.name} sandbox="allow-scripts" aria-busy={!previewLoaded} data-loaded={previewLoaded || undefined} onLoad={() => sendSlideCommand('state')} />
+            </>
           ) : (
-            <div className="r-empty">（{text(f.name)} 内容为空）</div>
+            <div className="r-empty">{t('renderer.emptyNamed', { name: text(f.name) })}</div>
           )
         ) : <div className="r-code"><textarea className="r-edit-area" data-testid="html-source-body" spellCheck={false} value={content} onChange={(event) => { if (!editing) enterEdit(); setEditBuffer(event.target.value); }} /></div>}
       </div>
@@ -274,26 +319,52 @@ export function HtmlRenderer({ f }: { f: FileNode }) {
   );
 }
 
-/* ---------- Source code (directly editable, without a separate preview mode) ---------- */
+/* ---------- Source code: highlighted preview by default, explicit source editing ---------- */
 export function CodeRenderer({ f }: { f: FileNode }) {
   const { getFileContent, getEditBuffer, setEditBuffer, enterEdit, editing, editSaving } = useWorkspace();
+  const [mode, setMode] = useState<'preview' | 'source'>('preview');
   const content = (editing ? getEditBuffer(f.path) : getFileContent(f.path)) || '';
+  const language = languageOfPath(f.path || f.name);
+  const highlighted = useMemo(() => highlightCode(content, language), [content, language]);
+  useEffect(() => setMode(editing ? 'source' : 'preview'), [editing, f.path]);
+  const openSource = () => {
+    if (!editing) enterEdit();
+    setMode('source');
+  };
   return (
-    <div className="r-code" data-testid="renderer-code">
-      <textarea
-        className="r-code-source"
-        data-testid="code-source-body"
-        aria-label={`${f.name} 源码编辑器`}
-        placeholder="（空文件）"
-        spellCheck={false}
-        readOnly={editSaving}
-        aria-busy={editSaving}
-        value={content}
-        onChange={(event) => {
-          if (!editing) enterEdit();
-          setEditBuffer(event.target.value);
-        }}
-      />
+    <div className="r-code-wrap" data-testid="renderer-code">
+      <div className="r-html-toolbar">
+        <div className="r-html-bar" role="tablist" aria-label={t('renderer.viewMode', { name: f.name })}>
+          <button type="button" role="tab" aria-selected={mode === 'preview'} className={mode === 'preview' ? 'on' : ''} data-testid="code-preview-toggle" onClick={() => setMode('preview')}>{t('renderer.preview')}</button>
+          <button type="button" role="tab" aria-selected={mode === 'source'} className={mode === 'source' ? 'on' : ''} data-testid="code-source-toggle" onClick={openSource}>{t('renderer.source')}</button>
+        </div>
+        <span className="syntax-language">{highlighted.language === 'text' ? t('renderer.plainText') : highlighted.language}</span>
+      </div>
+      <div className="r-code-stage">
+        {mode === 'preview' ? (
+          <div className="r-code" data-testid="code-highlight-preview">
+            <pre><code className={highlighted.highlighted ? 'is-highlighted' : 'is-plain'} dangerouslySetInnerHTML={{ __html: highlighted.html || t('renderer.emptyFile') }} /></pre>
+            {highlighted.truncated && <div className="syntax-fallback">{t('renderer.largePlainText')}</div>}
+          </div>
+        ) : (
+          <div className="r-code">
+            <textarea
+              className="r-code-source"
+              data-testid="code-source-body"
+              aria-label={t('renderer.sourceEditor', { name: f.name })}
+              placeholder={t('renderer.emptyFile')}
+              spellCheck={false}
+              readOnly={editSaving}
+              aria-busy={editSaving}
+              value={content}
+              onChange={(event) => {
+                if (!editing) enterEdit();
+                setEditBuffer(event.target.value);
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -371,7 +442,7 @@ export function SheetRenderer({ f }: { f: FileNode }) {
   return (
     <div className={`r-sheet-wrap${workbook ? ' office-workbook' : ''}`} data-testid="renderer-sheet">
       {workbook && (
-        <div className="office-sheet-tabs scroll" role="tablist" aria-label="工作表">
+        <div className="office-sheet-tabs scroll" role="tablist" aria-label={t('renderer.worksheets')}>
           {workbook.sheets.map((item, index) => (
             <button key={`${item.name}-${index}`} role="tab" aria-selected={index === sheetIndex} className={index === sheetIndex ? 'on' : ''} onClick={() => setSheetIndex(index)}>
               {text(item.name)}
@@ -389,7 +460,7 @@ export function SheetRenderer({ f }: { f: FileNode }) {
         >
           {rows.length ? (
             <table>
-              <caption className="visually-hidden">{text(sheet?.name || f.name)} 数据预览</caption>
+              <caption className="visually-hidden">{t('renderer.dataPreview', { name: text(sheet?.name || f.name) })}</caption>
               <colgroup>
                 {Array.from({ length: columnCount }, (_, index) => (
                   <col key={index} className={index === 0 ? 'sheet-name-column' : 'sheet-data-column'} />
@@ -424,7 +495,7 @@ export function SheetRenderer({ f }: { f: FileNode }) {
                 })}
               </tbody>
             </table>
-          ) : <div className="r-empty">（工作表没有可预览的数据）</div>}
+          ) : <div className="r-empty">{t('renderer.noSheetData')}</div>}
         </div>
       </div>
     </div>
@@ -436,22 +507,22 @@ export function SheetRenderer({ f }: { f: FileNode }) {
 export function BinaryRenderer({ f }: { f: FileNode }) {
   const { activeId } = useWorkspace();
   const office = f.type === 'doc' || f.type === 'slides';
-  const label = f.type === 'doc' ? 'Word 文档' : f.type === 'slides' ? 'PowerPoint 演示文稿' : '二进制文件';
+  const label = f.type === 'doc' ? t('renderer.wordDocument') : f.type === 'slides' ? t('renderer.powerpointPresentation') : t('renderer.binaryFile');
   const path = f.path || f.name;
   if (office) {
     return (
-      <div className={`r-office-unavailable is-${f.type}`} data-testid="renderer-office-unavailable" role="region" aria-label={`${label}暂不支持预览`}>
+      <div className={`r-office-unavailable is-${f.type}`} data-testid="renderer-office-unavailable" role="region" aria-label={t('renderer.officeUnavailable', { format: label })}>
         <div className="r-office-unavailable-content">
           <span className={`r-office-unavailable-icon ftype-${f.type}`} aria-hidden="true"><Icon name={fileIcon(f.type)} /></span>
           <span className="r-office-unavailable-kind">{label}</span>
-          <b className="r-office-unavailable-title">暂不支持在 Canvas 中预览</b>
-          <p>文件已安全保存在当前 session 中，你可以下载后使用相应的桌面应用查看完整内容。</p>
+          <b className="r-office-unavailable-title">{t('renderer.unsupportedTitle')}</b>
+          <p>{t('renderer.officeSaved')}</p>
           <div className="r-office-file-summary" title={path}>
             <span className={`tree-ico ftype-${f.type}`}><Icon name={fileIcon(f.type)} /></span>
             <span><b>{text(f.name)}</b>{f.size && <small>{text(f.size)}</small>}</span>
           </div>
           <a className="r-office-download" data-testid="renderer-office-download" href={workspaceFileUrl(activeId || '', path, true)} download>
-            <Icon name="download" />下载文件
+            <Icon name="download" />{t('renderer.downloadFile')}
           </a>
         </div>
       </div>
@@ -461,11 +532,11 @@ export function BinaryRenderer({ f }: { f: FileNode }) {
     <div className="r-office r-binary" data-testid="renderer-binary">
       <div className="r-office-head">
         <span className={`tree-ico ftype-${f.type}`}><Icon name={fileIcon(f.type)} /></span>
-        <span><b>{label}</b><small>已同步到当前 session 的 Files</small></span>
+        <span><b>{label}</b><small>{t('renderer.syncedFile')}</small></span>
       </div>
       <div className="r-doc">
         <p><b>{text(f.name)}</b>{f.size ? ` · ${text(f.size)}` : ''}</p>
-        <p>此格式暂无内嵌预览；Agent 仍可在当前 session 工作目录内读取、修改、移动或删除该文件。</p>
+        <p>{t('renderer.unsupportedHint')}</p>
       </div>
     </div>
   );
@@ -482,7 +553,7 @@ function ExcalidrawFileRenderer({ f, source }: { f: FileNode; source?: string })
   const { getFileContent } = useWorkspace();
   const content = source ?? getFileContent(f.path) ?? '';
   return (
-    <Suspense fallback={<div className="r-pdf-loading" role="status">正在加载 Excalidraw 预览…</div>}>
+    <Suspense fallback={<div className="r-pdf-loading" role="status">{t('renderer.loadingExcalidraw')}</div>}>
       <LazyExcalidrawRenderer name={f.name} source={content} />
     </Suspense>
   );
@@ -502,8 +573,8 @@ export function JsonRenderer({ f }: { f: FileNode }) {
   if (isExcalidrawPayload(parsed.value)) return <ExcalidrawFileRenderer f={f} source={source} />;
   return (
     <div className={`r-code r-json${parsed.invalid ? ' invalid' : ''}`} data-testid="renderer-json">
-      {parsed.invalid && <div className="r-json-error">JSON 格式无效，以下显示原始内容。</div>}
-      <pre><code>{parsed.content || '（空 JSON 文件）'}</code></pre>
+      {parsed.invalid && <div className="r-json-error" role="alert">{t('renderer.invalidJson')}</div>}
+      <pre><code>{parsed.content || t('renderer.emptyJson')}</code></pre>
     </div>
   );
 }
@@ -512,17 +583,18 @@ function MermaidFileRenderer({ f }: { f: FileNode }) {
   const { getFileContent } = useWorkspace();
   const source = getFileContent(f.path) || '';
   return (
-    <Suspense fallback={<div className="r-pdf-loading" role="status">正在加载 Mermaid 预览…</div>}>
+    <Suspense fallback={<div className="r-pdf-loading" role="status">{t('renderer.loadingMermaid')}</div>}>
       <LazyMermaidRenderer name={f.name} source={source} />
     </Suspense>
   );
 }
 
 export function PdfRenderer({ f }: { f: FileNode }) {
-  const { activeId } = useWorkspace();
+  const { activeId, refreshWorkspaceFiles } = useWorkspace();
   const path = f.path || f.name;
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryRevision, setRetryRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     let objectUrl: string | null = null;
@@ -534,12 +606,15 @@ export function PdfRenderer({ f }: { f: FileNode }) {
         setUrl(objectUrl);
       })
       .catch((reason: any) => {
-        if (reason?.name !== 'AbortError') setError(reason?.message || 'PDF 无法加载');
+        if (reason?.name !== 'AbortError') {
+          setError(reason?.message || t('renderer.pdfLoadFailed'));
+          if (reason instanceof WorkspaceFileRequestError && reason.status === 404) void refreshWorkspaceFiles();
+        }
       });
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [activeId, path]);
-  if (error) return <div className="r-office r-binary"><div className="r-doc"><p>PDF 预览失败：{text(error)}</p></div></div>;
-  if (!url) return <div className="r-pdf-loading" role="status">正在加载 PDF…</div>;
+  }, [activeId, path, refreshWorkspaceFiles, retryRevision]);
+  if (error) return <PreviewLoadError message={`${t('renderer.pdfFailed')} ${text(error)}`} onRetry={() => setRetryRevision(revision => revision + 1)} />;
+  if (!url) return <div className="r-pdf-loading" role="status">{t('renderer.loadingPdf')}</div>;
   return <iframe className="r-pdf" data-testid="renderer-pdf" title={f.name} src={url} />;
 }
 
@@ -547,17 +622,18 @@ export function PdfRenderer({ f }: { f: FileNode }) {
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error('图片无法转换为 Base64'));
+    reader.onerror = () => reject(reader.error || new Error(t('renderer.imageBase64Failed')));
     reader.onload = () => resolve(String(reader.result));
     reader.readAsDataURL(blob);
   });
 }
 
 export function ImageRenderer({ f }: { f: FileNode }) {
-  const { activeId } = useWorkspace();
+  const { activeId, refreshWorkspaceFiles } = useWorkspace();
   const path = f.path || f.name;
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryRevision, setRetryRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     setDataUrl(null); setError(null);
@@ -569,19 +645,32 @@ export function ImageRenderer({ f }: { f: FileNode }) {
         setDataUrl(nextDataUrl);
       })
       .catch((reason: any) => {
-        if (reason?.name !== 'AbortError') setError(reason?.message || '图片无法加载');
+        if (reason?.name !== 'AbortError') {
+          setError(reason?.message || t('renderer.imageLoadFailed'));
+          if (reason instanceof WorkspaceFileRequestError && reason.status === 404) void refreshWorkspaceFiles();
+        }
       });
     return () => controller.abort();
-  }, [activeId, path]);
-  if (error) return <div className="r-office r-binary"><div className="r-doc"><p>图片预览失败：{text(error)}</p></div></div>;
-  if (!dataUrl) return <div className="r-pdf-loading" role="status">正在加载图片…</div>;
+  }, [activeId, path, refreshWorkspaceFiles, retryRevision]);
+  if (error) return <PreviewLoadError message={`${t('renderer.imagePreviewFailed')} ${text(error)}`} onRetry={() => setRetryRevision(revision => revision + 1)} />;
+  if (!dataUrl) return <div className="r-pdf-loading" role="status">{t('renderer.loadingImage')}</div>;
   return (
     <div className="r-img" data-testid="renderer-png">
-      <div className="stage"><img src={dataUrl} alt={f.caption || f.name} onError={() => setError('浏览器无法解码此图片')} /></div>
+      <div className="stage"><img src={dataUrl} alt={f.caption || f.name} onError={() => setError(t('renderer.imageDecodeFailed'))} /></div>
       <div className="cap">
         <span>{text(f.caption || f.name)}</span>
         <span>{text(f.size || '')}</span>
       </div>
+    </div>
+  );
+}
+
+function PreviewLoadError({ message, onRetry }: { message: string; onRetry(): void }) {
+  return (
+    <div className="r-preview-error" role="alert">
+      <Icon name="warning" />
+      <span>{message}</span>
+      <button type="button" onClick={onRetry}><Icon name="refresh" />{t('common.refresh')}</button>
     </div>
   );
 }
@@ -591,12 +680,12 @@ export function FigRenderer({ f }: { f: FileNode }) {
   const { getFileContent } = useWorkspace();
   let spec: any = {};
   try { spec = JSON.parse(getFileContent(f.path) || '{}'); } catch { /* empty */ }
-  const eyebrow = spec.eyebrow || 'SPRING LIVING FESTIVAL';
-  const title = (spec.title || '万物\n正在醒来').replace(/\n/g, '<br>');
+  const eyebrow = spec.eyebrow || t('renderer.defaultEyebrow');
+  const title = String(spec.title || t('renderer.defaultTitle'));
   const subtitle = spec.subtitle || '';
   const date = spec.date || '';
   const m = spec.market || {};
-  const mdesc = (m.desc || '').replace(/\n/g, '<br>');
+  const mdesc = String(m.desc || '');
   const bg = spec.bg || '#203c35';
   const cc = spec.copyColor || '#f7f3e6';
 
@@ -621,18 +710,18 @@ export function FigRenderer({ f }: { f: FileNode }) {
   return (
     <div data-testid="renderer-fig" style={{ position: 'relative' }}>
       <div className="artboard" ref={abRef} onClick={() => setSel(null)} onKeyDown={(e) => { if (e.key === 'Escape') setSel(null); }}>
-        <div className="ab-bg ab-layer" style={{ background: bg }} role="button" tabIndex={0} aria-label="选择背景层" onClick={select} onKeyDown={selectFromKeyboard} />
+        <div className="ab-bg ab-layer" style={{ background: bg }} role="button" tabIndex={0} aria-label={t('renderer.selectBackground')} onClick={select} onKeyDown={selectFromKeyboard} />
         <div className="ab-grain" />
-        <div className="ab-orb ab-layer" role="button" tabIndex={0} aria-label="选择装饰图形层" onClick={select} onKeyDown={selectFromKeyboard} />
-        <div className="ab-copy ab-layer" style={{ color: cc }} role="button" tabIndex={0} aria-label="选择文案层" onClick={select} onKeyDown={selectFromKeyboard}>
+        <div className="ab-orb ab-layer" role="button" tabIndex={0} aria-label={t('renderer.selectDecoration')} onClick={select} onKeyDown={selectFromKeyboard} />
+        <div className="ab-copy ab-layer" style={{ color: cc }} role="button" tabIndex={0} aria-label={t('renderer.selectCopy')} onClick={select} onKeyDown={selectFromKeyboard}>
           <small>{text(eyebrow)}</small>
-          <h2 dangerouslySetInnerHTML={{ __html: title }} />
+          <h2>{text(title)}</h2>
           <p>{text(subtitle)}</p>
           {date ? <span className="ab-pill">{text(date)}</span> : null}
         </div>
-        <div className="ab-card ab-layer" role="button" tabIndex={0} aria-label="选择数据卡片层" onClick={select} onKeyDown={selectFromKeyboard}>
+        <div className="ab-card ab-layer" role="button" tabIndex={0} aria-label={t('renderer.selectDataCard')} onClick={select} onKeyDown={selectFromKeyboard}>
           <b>{text(m.title || '')}</b>
-          <p dangerouslySetInnerHTML={{ __html: mdesc }} />
+          <p>{text(mdesc)}</p>
         </div>
         {sel && (
           <div className="ab-sel" style={{ left: sel.l, top: sel.t, width: sel.w, height: sel.h }}>

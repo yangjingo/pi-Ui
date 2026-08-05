@@ -3,7 +3,23 @@ import type { AgentEventPayload } from '../../src/core/agent/protocol';
 import { collectPageErrors, demoSnapshot, emitAgentEvent, installMockAgent } from '../fixtures/agent';
 
 async function openArtifact(page: import('@playwright/test').Page, name: string) {
-  await page.getByTestId('flow-step').filter({ hasText: name }).last().click();
+  const railReturn = page.getByTestId('conversation-rail-return');
+  if (await railReturn.isVisible().catch(() => false)) await railReturn.click();
+  await page.getByTestId('agent-artifact').filter({ hasText: name }).last().click();
+}
+
+async function openRunOverview(page: import('@playwright/test').Page) {
+  const railReturn = page.getByTestId('conversation-rail-return');
+  if (await railReturn.isVisible().catch(() => false)) await railReturn.click();
+  const message = page.getByTestId('agent-message').last();
+  await message.hover();
+  await message.getByTestId('message-more').click();
+  await message.getByTestId('open-turn').click();
+}
+
+async function openRunStep(page: import('@playwright/test').Page, index = 0) {
+  await openRunOverview(page);
+  await page.getByTestId('turn-step').nth(index).click();
 }
 
 async function clipboardText(page: import('@playwright/test').Page) {
@@ -52,23 +68,61 @@ test('renders code, HTML, Markdown/Mermaid and sheets in Canvas', async ({ page,
   await expect(page.getByTestId('agent-message')).toBeVisible();
   await expect(page.locator('.out-card')).toHaveCount(0);
   await expect(page.getByTestId('artifact-manifest')).toHaveCount(0);
-  await expect(page.getByTestId('flow-step').filter({ hasText: 'report.html' }).last()).toHaveAttribute('data-kind', 'write');
-  await expect(page.locator('[data-testid="flow-step-shell"][data-artifact-path="run_pipeline.py"]')).toContainText('run_pipeline.py');
+  await expect(page.getByTestId('flow-step')).toHaveCount(8);
+  await expect(page.getByTestId('agent-artifact')).toHaveCount(4);
+  await expect(page.getByTestId('agent-artifact').filter({ hasText: 'report.html' })).toHaveAttribute('data-artifact-path', 'report.html');
+  await expect(page.getByTestId('agent-artifact').filter({ hasText: 'report.html' }).locator('.agent-artifact-icon svg')).toHaveAttribute('data-icon', 'web-preview');
+  await expect(page.getByTestId('agent-artifact').filter({ hasText: 'run_pipeline.py' })).toHaveAttribute('data-artifact-path', 'run_pipeline.py');
+  const artifactIconVisuals = await page.locator('.agent-artifact-icon').evaluateAll(elements => elements.map(element => {
+    const svg = element.querySelector('svg');
+    const style = getComputedStyle(element);
+    return { color: style.color, icon: svg?.getAttribute('data-icon') };
+  }));
+  expect(new Set(artifactIconVisuals.map(item => item.color)).size).toBe(1);
+  expect(artifactIconVisuals.map(item => item.icon)).toContain('web-preview');
+  expect(artifactIconVisuals.map(item => item.icon)).toContain('code');
+  const rowVisuals = await page.evaluate(() => {
+    const tool = document.querySelector<HTMLElement>('[data-testid="flow-step-shell"][data-kind="read"]')!;
+    const artifact = document.querySelector<HTMLElement>('[data-testid="agent-artifact"]')!;
+    const toolStyle = getComputedStyle(tool);
+    const artifactStyle = getComputedStyle(artifact);
+    return {
+      toolWidth: tool.getBoundingClientRect().width,
+      artifactWidth: artifact.getBoundingClientRect().width,
+      toolRadius: toolStyle.borderRadius,
+      artifactRadius: artifactStyle.borderRadius,
+      toolBorder: toolStyle.borderTopWidth,
+      artifactBorder: artifactStyle.borderTopWidth,
+    };
+  });
+  expect(Math.abs(rowVisuals.toolWidth - rowVisuals.artifactWidth)).toBeLessThanOrEqual(1);
+  expect(rowVisuals.artifactRadius).toBe(rowVisuals.toolRadius);
+  expect(rowVisuals.artifactBorder).toBe(rowVisuals.toolBorder);
+  await openRunStep(page);
+  await expect(page.locator('.canvas-shell.context-view .step-result')).toBeVisible();
 
   await openArtifact(page, 'run_pipeline.py');
   const code = page.getByTestId('renderer-code');
   await expect(code).toContainText('#!/usr/bin/env python3');
   await expect(code).toContainText('def parse_report');
+  await expect(page.getByTestId('code-highlight-preview').locator('.syntax-keyword').filter({ hasText: 'def' })).toHaveCount(1);
   await expect(page.locator('.canvas-viewport h1')).toHaveCount(0);
   await expect(page.getByTestId('cv-locate')).toHaveCount(0);
-  await expect(page.getByTestId('cv-copy')).toHaveAttribute('title', '复制预览文本');
-  await expect(page.getByTestId('cv-copy')).toHaveText('复制');
+  await expect(page.getByTestId('cv-copy')).toHaveAttribute('title', 'Copy preview text');
+  await expect(page.getByTestId('cv-copy')).toHaveText('Copy');
   await page.getByTestId('cv-copy').click();
   await expect.poll(() => clipboardText(page)).toContain('def parse_report');
 
   await openArtifact(page, 'report.html');
   const html = page.getByTestId('renderer-html');
-  await expect(html.locator('iframe')).toBeVisible();
+  const htmlFrame = html.locator('iframe');
+  await expect(htmlFrame).toBeVisible();
+  await expect(htmlFrame).toHaveAttribute('data-loaded', 'true');
+  await expect(htmlFrame).toHaveAttribute('aria-busy', 'false');
+  await expect(html.getByRole('status')).toHaveCount(0);
+  await expect.poll(() => htmlFrame.contentFrame().locator('body').evaluate(() =>
+    Boolean((window as any).__piCanvasPreviewBudget),
+  )).toBe(true);
   await page.getByTestId('html-source').click();
   await expect(page.getByTestId('html-source-body')).toHaveValue(/<!doctype html>/i);
   await page.getByTestId('html-preview').click();
@@ -92,9 +146,9 @@ test('renders code, HTML, Markdown/Mermaid and sheets in Canvas', async ({ page,
   await expect(sheet).toBeVisible();
   await expect(sheet.locator('tbody tr')).toHaveCount(5);
   await expect(sheet.locator('tbody tr').last()).toHaveClass(/total/);
-  await expect(page.getByTestId('cv-copy')).toHaveAttribute('title', '复制预览文本');
+  await expect(page.getByTestId('cv-copy')).toHaveAttribute('title', 'Copy preview text');
   await page.getByTestId('cv-copy').click();
-  await expect(page.getByTestId('cv-copy')).toHaveText('已复制');
+  await expect(page.getByTestId('cv-copy')).toHaveText('Copied');
   await expect.poll(() => clipboardText(page)).toBe([
     '项目\t预算(元)\t实际(元)\t差额(元)',
     '检测费用\t12000\t11800\t-200',
@@ -104,6 +158,32 @@ test('renders code, HTML, Markdown/Mermaid and sheets in Canvas', async ({ page,
     '合计\t28000\t28400\t+400',
   ].join('\n'));
   expect(errors).toEqual([]);
+});
+
+test('renders FIG text without executing embedded markup', async ({ page }) => {
+  const maliciousFig = JSON.stringify({
+    title: 'Safe title\n<img src=x onerror="window.__figInjected=true">',
+    market: { title: 'Market', desc: '<svg onload="window.__figInjected=true"></svg>' },
+  });
+  await installMockAgent(page, {
+    snapshot: {
+      ...demoSnapshot,
+      files: [...demoSnapshot.files, {
+        file: { name: 'safe.fig', path: 'safe.fig', type: 'fig', size: `${maliciousFig.length} B` },
+        content: maliciousFig,
+      }],
+    },
+  });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('ws-toggle').click();
+  await page.locator('[data-testid="ws-tab"][data-tab="files"]').click();
+  await page.getByTestId('file-item').filter({ hasText: 'safe.fig' }).click();
+
+  const preview = page.getByTestId('renderer-fig');
+  await expect(preview).toContainText('<img src=x');
+  await expect(preview).toContainText('<svg onload=');
+  await expect(preview.locator('img, svg svg')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as Window & { __figInjected?: boolean }).__figInjected)).toBeUndefined();
 });
 
 test('edits code directly and saves it with Ctrl+S', async ({ page }) => {
@@ -117,20 +197,21 @@ test('edits code directly and saves it with Ctrl+S', async ({ page }) => {
   await expect(page.getByTestId('agent-message')).toBeVisible();
   await openArtifact(page, 'run_pipeline.py');
 
+  await page.getByTestId('code-source-toggle').click();
   const editor = page.getByTestId('code-source-body');
   await expect(editor).toBeVisible();
   await expect(editor).toHaveValue(/def parse_report/);
   await expect(page.locator('#canvas-document-panel > .r-code > pre')).toHaveCount(0);
   const panel = page.locator('#canvas-document-panel');
-  await expect(panel).toHaveCSS('border-top-style', 'solid');
-  await expect(panel).toHaveCSS('border-top-color', 'rgb(231, 229, 224)');
+  await expect(panel).toHaveCSS('border-top-style', 'none');
+  await expect(panel).toHaveCSS('background-image', 'none');
   await expect(panel).toHaveCSS('outline-style', 'none');
   const panelBox = await panel.boundingBox();
   const codeBox = await page.getByTestId('renderer-code').boundingBox();
   expect(panelBox).not.toBeNull();
   expect(codeBox).not.toBeNull();
-  expect(Math.abs(codeBox!.width - (panelBox!.width - 2))).toBeLessThanOrEqual(1);
-  expect(Math.abs(codeBox!.height - (panelBox!.height - 2))).toBeLessThanOrEqual(1);
+  expect(Math.abs(codeBox!.width - panelBox!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(codeBox!.height - panelBox!.height)).toBeLessThanOrEqual(1);
   await expect(page.getByTestId('renderer-code')).toHaveCSS('border-top-width', '0px');
 
   const nextContent = '#!/usr/bin/env python3\n\ndef parse_report(path):\n    return {"edited": path}\n';
@@ -138,7 +219,7 @@ test('edits code directly and saves it with Ctrl+S', async ({ page }) => {
   await expect(page.getByTestId('cv-save')).toBeVisible();
   await expect(page.locator('.canvas-footer')).toHaveCount(0);
   await expect(page.locator('.canvas-bar .edit-status')).toBeVisible();
-  await expect(page.locator('.edit-status')).toContainText('未保存');
+  await expect(page.locator('.edit-status')).toContainText('Unsaved');
 
   const saveRequestPromise = page.waitForRequest(request =>
     request.method() === 'POST' && new URL(request.url()).pathname === '/api/file',
@@ -152,7 +233,43 @@ test('edits code directly and saves it with Ctrl+S', async ({ page }) => {
     content: nextContent,
   });
   await expect(page.getByTestId('cv-save')).toBeHidden();
-  await expect(editor).toHaveValue(nextContent);
+  await expect(page.getByTestId('code-highlight-preview')).toContainText('return {"edited": path}');
+});
+
+test('saves a dirty Canvas file before starting its direct download', async ({ page }) => {
+  const sequence: string[] = [];
+  await installMockAgent(page, { snapshot: demoSnapshot });
+  await page.route('**/api/file', async route => {
+    sequence.push('save');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+  await page.route('**/api/file/raw?**', async route => {
+    sequence.push('download');
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: '# dirty content\n' });
+  });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await openArtifact(page, 'run_pipeline.py');
+  await page.getByTestId('code-source-toggle').click();
+  await page.getByTestId('code-source-body').fill('# dirty content\n');
+
+  await page.getByTestId('cv-download').click();
+  await expect.poll(() => sequence).toEqual(['save', 'download']);
+});
+
+test('shows an inline direct-download error and refreshes a missing file snapshot', async ({ page }) => {
+  await installMockAgent(page, { snapshot: demoSnapshot });
+  await page.route('**/api/file/raw?**', route => route.fulfill({
+    status: 404,
+    contentType: 'application/json',
+    body: '{"error":"file no longer exists"}',
+  }));
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await openArtifact(page, 'run_pipeline.py');
+  const refresh = page.waitForRequest(request => new URL(request.url()).pathname === '/api/session');
+  await page.getByTestId('cv-download').click();
+  await expect(page.getByTestId('ws-download-error')).toHaveRole('alert');
+  await expect(page.getByTestId('ws-download-error')).toContainText('file no longer exists');
+  await refresh;
 });
 
 test('navigates embedded HTML presentations without iframe focus and caps preview animation work', async ({ page }) => {
@@ -304,8 +421,9 @@ test('reuses Mermaid and Excalidraw work until the file content changes', async 
 });
 
 test('renders Excel sheets as a dense sticky-column data matrix', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 800 });
   const workbookPath = 'evaluation.xlsx';
-  const columns = ['Benchmark', 'Inkling', 'Model B', 'Model C', 'Model D', 'Model E', 'Model F', 'Model G', 'Model H', 'Model I'];
+  const columns = ['Benchmark', 'Inkling', 'Model B', 'Model C', 'Model D', 'Model E', 'Model F', 'Model G', 'Model H', 'Model I', 'Model J', 'Model K', 'Model L', 'Model M'];
   const workbook = {
     __office: 'workbook' as const,
     sheets: [
@@ -314,9 +432,9 @@ test('renders Excel sheets as a dense sticky-column data matrix', async ({ page 
         rows: [
           columns,
           ['Reasoning'],
-          ['HLE text only', '29.7%', '26.6%', '29.4%', '35.9%', '40.1%', '35.9%', '44.7%', '53.3%', '47.2%'],
-          ['HLE with tools', '46.0%', '37.4%', '50.2%', '54.0%', '54.7%', '48.2%', '51.4%', '64.5%', '55.0%'],
-          ['总计', '75.7%', '64.0%', '79.6%', '89.9%', '94.8%', '84.1%', '96.1%', '117.8%', '102.2%'],
+          ['HLE text only', '29.7%', '26.6%', '29.4%', '35.9%', '40.1%', '35.9%', '44.7%', '53.3%', '47.2%', '49.8%', '51.4%', '52.7%', '54.1%'],
+          ['HLE with tools', '46.0%', '37.4%', '50.2%', '54.0%', '54.7%', '48.2%', '51.4%', '64.5%', '55.0%', '56.8%', '58.2%', '59.6%', '61.0%'],
+          ['总计', '75.7%', '64.0%', '79.6%', '89.9%', '94.8%', '84.1%', '96.1%', '117.8%', '102.2%', '106.6%', '109.6%', '112.3%', '115.1%'],
         ],
       },
       {
@@ -358,8 +476,7 @@ test('renders Excel sheets as a dense sticky-column data matrix', async ({ page 
   await expect(scroller).toHaveAttribute('data-scroll-left', 'true');
   await expect(scroller).toHaveAttribute('data-scroll-right', 'false');
 
-  await page.setViewportSize({ width: 700, height: 800 });
-  await expect(renderer.locator('tbody th').first()).toHaveCSS('min-width', '144px');
+  await expect(renderer.locator('tbody th').first()).toHaveCSS('min-width', '168px');
   await renderer.getByRole('tab', { name: 'Scores' }).focus();
   await expect(renderer.getByRole('tab', { name: 'Scores' })).toBeFocused();
 
@@ -370,8 +487,8 @@ test('renders Excel sheets as a dense sticky-column data matrix', async ({ page 
 
 test('centers harmonious unavailable states for Word and PowerPoint files', async ({ page }) => {
   const officeFiles = [
-    { name: 'project-brief.docx', type: 'doc' as const, label: 'Word 文档', size: '18.4 KB' },
-    { name: 'launch-review.pptx', type: 'slides' as const, label: 'PowerPoint 演示文稿', size: '2.1 MB' },
+    { name: 'project-brief.docx', type: 'doc' as const, label: 'Word document', size: '18.4 KB' },
+    { name: 'launch-review.pptx', type: 'slides' as const, label: 'PowerPoint presentation', size: '2.1 MB' },
   ];
   const snapshot = {
     ...demoSnapshot,
@@ -394,7 +511,7 @@ test('centers harmonious unavailable states for Word and PowerPoint files', asyn
     const unavailable = page.getByTestId('renderer-office-unavailable');
     await expect(unavailable).toBeVisible();
     await expect(unavailable).toContainText(file.label);
-    await expect(unavailable).toContainText('暂不支持在 Canvas 中预览');
+    await expect(unavailable).toContainText('Preview unavailable');
     await expect(unavailable).toContainText(file.name);
     await expect(unavailable).toContainText(file.size);
     await expect(unavailable).toHaveCSS('align-items', 'center');
@@ -402,7 +519,7 @@ test('centers harmonious unavailable states for Word and PowerPoint files', asyn
     await expect(unavailable.locator('.r-office-unavailable-content')).toHaveCSS('text-align', 'center');
     const download = page.getByTestId('renderer-office-download');
     await expect(download).toHaveAttribute('href', new RegExp(`path=${encodeURIComponent(file.name)}.*download=1`));
-    await expect(download).toContainText('下载文件');
+    await expect(download).toContainText('Download file');
     await download.focus();
     await expect(download).toBeFocused();
   }
@@ -420,14 +537,20 @@ test('uses the full Canvas width for files, turns and trajectory details', async
   expect(iframeBox!.width).toBeGreaterThanOrEqual(canvasBox!.width * 0.9);
   await expect(page.getByTestId('renderer-html').locator('iframe')).toHaveCSS('border-top-width', '0px');
 
-  await page.getByTestId('open-turn').click();
+  await openRunOverview(page);
   const turn = page.getByTestId('turn-report');
   await expect(turn).toBeVisible();
   const turnBox = await turn.boundingBox();
-  expect(turnBox!.width).toBeGreaterThanOrEqual(canvasBox!.width * 0.9);
+  expect(canvasBox!.width - turnBox!.width).toBeLessThanOrEqual(96);
+  expect(turnBox!.width).toBeLessThanOrEqual(canvasBox!.width);
   await expect(page.getByTestId('turn-step')).toHaveCount(8);
-  await expect(turn.locator('.turn-summary-copy')).toContainText('6 次工具调用');
-  await expect(turn.locator('.turn-summary-copy')).toContainText('2 轮思考');
+  await expect(turn.locator('.run-section-head')).toContainText('6 tools');
+  await expect(turn.locator('.run-section-head')).toContainText('2 thinking');
+  await expect(page.getByTestId('turn-diagnostics')).not.toHaveAttribute('open', '');
+  await page.getByTestId('turn-diagnostics').locator('summary').click();
+  await expect(page.getByTestId('turn-diagnostics')).toContainText('740 ms');
+  await expect(page.getByTestId('turn-diagnostics')).toContainText('26.32 token/s');
+  await expect(page.getByTestId('turn-diagnostics')).toContainText('17,120 tok');
 
   await page.getByTestId('turn-step').first().click();
   const step = page.getByTestId('renderer-step');
@@ -435,11 +558,48 @@ test('uses the full Canvas width for files, turns and trajectory details', async
   await expect(page.getByTestId('step-think')).toContainText('先解析 PDF');
   await expect(page.locator('.step-io')).toHaveCount(0);
   const stepBox = await step.boundingBox();
-  expect(stepBox!.width).toBeGreaterThanOrEqual(canvasBox!.width * 0.9);
+  expect(canvasBox!.width - stepBox!.width).toBeLessThanOrEqual(96);
+  expect(stepBox!.width).toBeLessThanOrEqual(canvasBox!.width);
+  await expect(page.getByTestId('step-back')).toBeVisible();
 
-  await page.getByTestId('open-turn').click();
+  await page.getByTestId('step-back').click();
   await page.getByTestId('turn-step').nth(1).click();
-  await expect(page.locator('.step-io')).toHaveCount(2);
+  await expect(page.locator('.shell-step-result')).toBeVisible();
+  await expect(page.getByTestId('step-input')).toContainText('python run_pipeline.py');
+  await expect(page.getByTestId('step-output')).toContainText('Found 26 reports');
+});
+
+test('opens Canvas split by default and makes fullscreen an explicit reversible choice', async ({ page }) => {
+  await installMockAgent(page, { snapshot: demoSnapshot });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+  await openArtifact(page, 'report.html');
+  const appBox = await page.locator('.app').boundingBox();
+  const workspaceBox = await page.locator('.workspace').boundingBox();
+  expect(appBox).not.toBeNull();
+  expect(workspaceBox).not.toBeNull();
+  expect(Math.abs(workspaceBox!.width - appBox!.width / 2)).toBeLessThanOrEqual(2);
+  await expect(page.locator('.app')).not.toHaveClass(/canvas-focused/);
+  await expect(page.locator('.conversation-main')).toBeVisible();
+  await expect(page.getByTestId('canvas-panel')).toBeVisible();
+  const focusToggle = page.getByTestId('canvas-focus-toggle');
+  await expect(focusToggle).toHaveAttribute('aria-pressed', 'false');
+  await focusToggle.click();
+  await expect(page.locator('.app')).toHaveClass(/canvas-focused/);
+  await expect(focusToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.conversation-main')).toBeHidden();
+  const rail = page.locator('.conversation-rail');
+  await expect(rail).toBeVisible();
+  const railBox = await rail.boundingBox();
+  expect(railBox).not.toBeNull();
+  expect(railBox!.width).toBeGreaterThanOrEqual(42);
+  expect(railBox!.width).toBeLessThanOrEqual(44);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.app')).not.toHaveClass(/canvas-focused/);
+  await expect(page.locator('.conversation-main')).toBeVisible();
+  await expect(page.getByTestId('canvas-panel')).toBeVisible();
+  await expect(page.getByTestId('canvas-focus-toggle')).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('previews a server-backed SVG and copies its caption as plain text', async ({ page, context }) => {
@@ -475,6 +635,46 @@ test('previews a server-backed SVG and copies its caption as plain text', async 
   expect(rendererBox!.width).toBeGreaterThanOrEqual(canvasBox!.width - 2);
 });
 
+test('announces a renderer load failure and retries it in place', async ({ page }) => {
+  const path = 'retry-preview.png';
+  const snapshot = {
+    ...demoSnapshot,
+    files: [...demoSnapshot.files, {
+      file: { name: path, path, type: 'png' as const, size: '124 B', caption: 'Retry preview' },
+      content: '__PI_BINARY_FILE__',
+    }],
+  };
+  let attempts = 0;
+  let failPreview = true;
+  await installMockAgent(page, { snapshot });
+  await page.route('**/api/file/raw?**', route => {
+    attempts += 1;
+    if (failPreview) {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"preview unavailable"}' });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#2563eb"/></svg>',
+    });
+  });
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('ws-toggle').click();
+  await page.locator('[data-testid="ws-tab"][data-tab="files"]').click();
+  await page.locator(`[data-testid="file-item"][data-file-path="${path}"]`).click();
+
+  const error = page.locator('.r-preview-error');
+  await expect(error).toHaveRole('alert');
+  await expect(error).toContainText('Image preview failed');
+  await expect(error).toContainText('preview unavailable');
+  failPreview = false;
+  const attemptsBeforeRetry = attempts;
+  await error.getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByTestId('renderer-png').locator('img')).toBeVisible();
+  expect(attempts).toBeGreaterThan(attemptsBeforeRetry);
+});
+
 test('imports dropped text with progress and rejects binary content', async ({ page }) => {
   await installMockAgent(page, { snapshot: demoSnapshot });
   await page.route('**/api/file', async route => {
@@ -500,7 +700,7 @@ test('imports dropped text with progress and rejects binary content', async ({ p
     target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: transfer }));
     target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
   });
-  await expect(page.getByTestId('ws-import-progress')).toContainText('正在导入到当前工作区');
+  await expect(page.getByTestId('ws-import-progress')).toContainText('Importing into this workspace');
   await expect(page.locator('[data-testid="file-item"][data-file-path="dragged_notes.md"]')).toBeVisible();
 
   await page.evaluate(() => {
@@ -510,7 +710,7 @@ test('imports dropped text with progress and rejects binary content', async ({ p
     target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: transfer }));
     target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
   });
-  await expect(page.getByTestId('drop-msg')).toContainText('写入失败');
+  await expect(page.getByTestId('drop-msg')).toContainText('Failed 1');
   await expect(page.locator('[data-testid="file-item"][data-file-path="tiny.png"]')).toHaveCount(0);
 });
 
@@ -533,16 +733,19 @@ test('shows one full Thinking payload without repeating its preview', async ({ p
   };
   await installMockAgent(page, { snapshot });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('flow-step').click();
+  await openRunStep(page);
 
   const panel = page.locator('#canvas-document-panel');
-  await expect(panel).toContainText('完整 Thinking');
+  await expect(panel).toContainText('Full thinking');
   await expect(panel).toContainText('这是唯一需要阅读的完整 Thinking 内容。');
   await expect(panel).not.toContainText('重复的摘要不应出现在 Canvas');
   await expect(panel.locator('.step-head .step-hd')).toHaveCSS('flex-direction', 'row');
-  await expect(panel.locator('.step-head .step-hd b')).toHaveCSS('font-size', '13.5px');
+  await expect(panel.locator('.step-head .step-hd b')).toHaveCSS('font-size', '12.5px');
   await expect(panel.locator('.step-head .step-time')).toHaveCSS('font-size', '10px');
-  await expect(panel.locator('.step-head .step-ico')).toHaveCSS('width', '22px');
+  await expect(panel.locator('.step-head')).toHaveCSS('column-gap', '11px');
+  await expect(panel.locator('.step-head .step-ico')).toHaveCSS('width', '24px');
+  const panelPadding = await panel.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft));
+  expect(panelPadding).toBeGreaterThanOrEqual(16);
   await expect(panel.locator('.step-think')).toHaveCSS('border-left-width', '2px');
 });
 
@@ -582,12 +785,14 @@ test('shows Goal content and semantic input/output in Traj instead of an empty o
   await installMockAgent(page, { snapshot });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-  const goalStep = page.getByTestId('flow-step');
+  await openRunOverview(page);
+  const goalStep = page.getByTestId('turn-step');
   await expect(goalStep).toContainText('完成 Goal Traj 强化');
   await expect(goalStep).toHaveAttribute('data-kind', 'goal');
   await goalStep.click();
 
   await expect(page.getByTestId('renderer-step')).toBeVisible();
+  await expect(page.locator('#canvas-document-panel .step-head .step-hd b')).toHaveText('Goal');
   await expect(page.locator('#canvas-document-panel .step-head .step-det')).toHaveCSS('font-size', '10.5px');
   await expect(page.getByTestId('step-input')).toContainText('requestedFields');
   await expect(page.getByTestId('step-input')).toContainText('objective');
@@ -595,6 +800,75 @@ test('shows Goal content and semantic input/output in Traj instead of an empty o
   await expect(page.getByTestId('step-output')).toContainText('tokensUsed');
   await expect(page.getByTestId('step-output')).toContainText('tokenBudget');
   await expect(page.getByTestId('step-output')).toContainText('remainingTokens');
+});
+
+test('distinguishes Bash commands from PowerShell and renders normalized multiline output', async ({ page }) => {
+  const snapshot = {
+    ...demoSnapshot,
+    messages: [{
+      role: 'agent' as const,
+      status: 'done' as const,
+      traj: [{
+        t: 'code',
+        shell: 'powershell' as const,
+        outputEncoding: 'normalized' as const,
+        title: '执行命令',
+        det: 'pwsh.exe -NoProfile -Command Get-ChildItem',
+        in: 'pwsh.exe -NoProfile -Command "Get-ChildItem"',
+        out: 'wsl: warning\n第一行\n第二行\n',
+        status: 'done' as const,
+        time: '10:00',
+      }],
+      blocks: [{ kind: 'step' as const, step: 0 }],
+    }],
+  };
+  await installMockAgent(page, { snapshot });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+  await openRunStep(page);
+
+  await expect(page.getByTestId('shell-title')).toHaveText('PowerShell');
+  await expect(page.getByTestId('step-input')).toContainText('>');
+  await expect(page.getByTestId('step-input')).toContainText('Get-ChildItem');
+  await expect(page.getByTestId('step-input').locator('.lab')).toHaveCount(0);
+  await expect(page.getByTestId('step-output')).not.toContainText('Combined output');
+  await expect(page.getByTestId('step-output')).toContainText('Encoding control characters removed');
+  await expect(page.getByTestId('step-output')).toContainText('第一行');
+  await expect(page.getByTestId('step-output')).toContainText('第二行');
+  await expect(page.getByTestId('step-info')).toHaveCount(0);
+});
+
+test('explains historical shell output that was irreversibly damaged before Canvas', async ({ page }) => {
+  const snapshot = {
+    ...demoSnapshot,
+    messages: [{
+      role: 'agent' as const,
+      status: 'done' as const,
+      traj: [{
+        t: 'code',
+        shell: 'powershell' as const,
+        outputEncoding: 'lossy' as const,
+        title: '执行命令',
+        det: 'Get-ChildItem',
+        in: 'Get-ChildItem',
+        out: '\ufffd'.repeat(40),
+        status: 'done' as const,
+        error: true,
+        time: '10:00',
+      }],
+      blocks: [{ kind: 'step' as const, step: 0 }],
+    }],
+  };
+  await installMockAgent(page, { snapshot });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+  await openRunStep(page);
+
+  await expect(page.getByTestId('shell-title')).toHaveText('PowerShell · Failed');
+  await expect(page.getByTestId('step-output')).toContainText('Some characters were lost before rendering');
+  await expect(page.getByTestId('step-output')).toContainText(
+    'Historical output was damaged before it reached Canvas; the original characters cannot be recovered.',
+  );
 });
 
 test('opens a generated Goal budget report directly in Canvas', async ({ page }) => {
@@ -631,4 +905,140 @@ test('opens a generated Goal budget report directly in Canvas', async ({ page })
   await expect(report.locator('h1')).toHaveText('Goal 预算终止报告');
   await expect(report.locator('table')).toContainText('12,000');
   await expect(report.locator('table')).toContainText('6 轮');
+});
+
+test('keeps Canvas available and manages selection, ZIP, rename and delete from Files', async ({ page }) => {
+  await installMockAgent(page, { snapshot: demoSnapshot });
+  await page.route('**/api/files/archive', async route => {
+    await new Promise(resolve => setTimeout(resolve, 120));
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': "attachment; filename*=UTF-8''demo-files.zip",
+      },
+      body: 'PK fixture',
+    });
+  });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await openArtifact(page, 'run_pipeline.py');
+
+  await expect(page.getByTestId('cv-download')).toBeVisible();
+  await expect(page.getByTestId('canvas-prev')).toHaveCount(0);
+  await expect(page.getByTestId('canvas-next')).toHaveCount(0);
+  await expect(page.getByTestId('cv-more')).toHaveCount(0);
+
+  await page.locator('[data-testid="ws-tab"][data-tab="files"]').click();
+  await expect(page.locator('[data-testid="file-item"][tabindex="0"]')).toHaveCount(1);
+  await page.setViewportSize({ width: 640, height: 320 });
+  await page.waitForTimeout(100);
+  const readmeRow = page.getByTestId('file-item').filter({ hasText: 'README.md' });
+  const readmeShell = readmeRow.locator('..');
+  await readmeShell.getByTestId('file-row-action').click();
+  const filePopover = page.getByTestId('file-action-popover');
+  await expect(filePopover).toContainText('Rename');
+  await expect(filePopover).toContainText('Delete file');
+  await expect(filePopover.getByRole('menuitem').first()).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(filePopover.getByRole('menuitem').last()).toBeFocused();
+  await expect(filePopover).toHaveCSS('position', 'fixed');
+  await expect(filePopover).toHaveAttribute('data-placement', 'top');
+  await expect.poll(() => filePopover.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    return box.top >= 8 && box.left >= 8 && box.right <= window.innerWidth - 8 && box.bottom <= window.innerHeight - 8;
+  })).toBe(true);
+  await page.evaluate(() => document.querySelector('[data-testid="files-panel"]')?.dispatchEvent(new Event('scroll')));
+  await expect(filePopover).toHaveCount(0);
+  await readmeShell.getByTestId('file-row-action').click();
+  await page.keyboard.press('Escape');
+  await expect(filePopover).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  await page.getByTestId('file-select').click();
+  await expect(page.getByTestId('file-selection-toolbar')).toBeVisible();
+  await readmeRow.click();
+  await page.getByTestId('file-item').filter({ hasText: 'budget.csv' }).click();
+  await expect(page.getByTestId('file-selection-toolbar')).toContainText('2 items');
+
+  const archiveRequest = page.waitForRequest(request =>
+    request.method() === 'POST' && new URL(request.url()).pathname === '/api/files/archive',
+  );
+  const download = page.waitForEvent('download');
+  await page.getByTestId('file-download-zip').click();
+  await expect(page.locator('.file-selection-toolbar [role="status"]')).toHaveText('Packing…');
+  expect((await archiveRequest).postDataJSON()).toEqual({
+    sessionId: 'demo',
+    paths: ['README.md', 'budget.csv'],
+  });
+  expect((await download).suggestedFilename()).toBe('demo-files.zip');
+
+  await page.getByTestId('file-select-cancel').click();
+  await expect(page.getByTestId('file-selection-toolbar')).toHaveCount(0);
+});
+
+test('cancels an in-flight ZIP and clears transient Files state when the Session changes', async ({ page }) => {
+  const sessionA = {
+    ...demoSnapshot,
+    sessionId: 'session-a',
+    session: { ...demoSnapshot.session, id: 'session-a', title: 'Session A' },
+    cwd: 'C:/pi-ui-test/.workspace/session-a',
+  };
+  const sessionB = {
+    ...demoSnapshot,
+    sessionId: 'session-b',
+    session: { ...demoSnapshot.session, id: 'session-b', title: 'Session B' },
+    cwd: 'C:/pi-ui-test/.workspace/session-b',
+  };
+  await page.addInitScript(() => {
+    const originalClick = HTMLAnchorElement.prototype.click;
+    Object.defineProperty(window, '__zipDownloads', { configurable: true, writable: true, value: 0 });
+    HTMLAnchorElement.prototype.click = function click() {
+      if (this.download.endsWith('.zip')) {
+        (window as typeof window & { __zipDownloads: number }).__zipDownloads += 1;
+        return;
+      }
+      originalClick.call(this);
+    };
+  });
+  await installMockAgent(page, {
+    snapshot: sessionA,
+    snapshots: { 'session-a': sessionA, 'session-b': sessionB },
+    sessions: [sessionA.session, sessionB.session],
+  });
+  let releaseArchive: (() => void) | undefined;
+  await page.route('**/api/files/archive', async route => {
+    await new Promise<void>(resolve => { releaseArchive = resolve; });
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': "attachment; filename*=UTF-8''session-a-files.zip",
+      },
+      body: 'PK stale fixture',
+    }).catch(() => {});
+  });
+
+  await page.goto('/sessions/session-a', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('ws-toggle').click();
+  await page.locator('[data-testid="ws-tab"][data-tab="files"]').click();
+  await page.getByTestId('file-search').fill('README');
+  await page.getByTestId('file-select').click();
+  await page.getByTestId('file-item').filter({ hasText: 'README.md' }).click();
+  const archiveRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/files/archive');
+  await page.getByTestId('file-download-zip').click();
+  await archiveRequest;
+  await expect(page.locator('.file-selection-toolbar [role="status"]')).toHaveText('Packing…');
+
+  await page.getByTestId('session-switcher').click();
+  await page.getByTestId('session-item').filter({ hasText: 'Session B' }).click();
+  await expect(page).toHaveURL(/\/sessions\/session-b$/);
+  releaseArchive?.();
+  await page.waitForTimeout(150);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __zipDownloads: number }).__zipDownloads)).toBe(0);
+
+  await page.getByTestId('ws-toggle').click();
+  await page.locator('[data-testid="ws-tab"][data-tab="files"]').click();
+  await expect(page.getByTestId('file-search')).toHaveValue('');
+  await expect(page.getByTestId('file-selection-toolbar')).toHaveCount(0);
+  await expect(page.getByTestId('file-download-zip')).toHaveCount(0);
 });

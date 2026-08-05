@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from 'react';
 import type { FileNode, Message } from '../../core/agent/protocol';
-import { Icon, trajIcon, fileIcon, text, fmtMs, fmtTok } from '../../ui';
+import { Icon, trajIcon, fileIcon, t, text, fmtMs, fmtTok, trajectoryLabel } from '../../ui';
 import { useWorkspace } from '../../workspace';
 
 type Section = 'overview' | 'tools' | 'files' | 'turns';
@@ -13,7 +13,7 @@ interface FlatStep {
   si: number;
   key: string;
   t: string;
-  title: string;
+  shell?: 'bash' | 'powershell';
   det: string;
   in?: string;
   out?: string;
@@ -23,12 +23,12 @@ interface FlatStep {
   bucket: string;
 }
 
-const BUCKETS = [
-  { key: 'all', label: '全部' },
-  { key: 'read', label: '读取' },
-  { key: 'write', label: '写入' },
-  { key: 'code', label: '执行' },
-  { key: 'other', label: '其它' },
+const buckets = () => [
+  { key: 'all', label: t('report.all') },
+  { key: 'read', label: t('report.read') },
+  { key: 'write', label: t('report.write') },
+  { key: 'code', label: t('report.execute') },
+  { key: 'other', label: t('report.other') },
 ];
 
 function bucketOf(t: string): string {
@@ -50,7 +50,7 @@ function answerOf(message: Message): string {
   const blockText = (message.blocks || [])
     .filter((block): block is Extract<NonNullable<Message['blocks']>[number], { kind: 'text' }> => block.kind === 'text')
     .map(block => block.text.trim()).filter(Boolean).join(' ');
-  return (blockText || message.intro || message.outro || '本轮没有文字输出').replace(/\s+/g, ' ').trim();
+  return (blockText || message.intro || message.outro || t('report.noText')).replace(/\s+/g, ' ').trim();
 }
 
 export function ReportView() {
@@ -67,7 +67,7 @@ export function ReportView() {
     const result: FlatStep[] = [];
     for (const { m, mi } of turns) {
       (m.traj || []).forEach((step, si) => result.push({
-        mi, si, key: `${mi}-${si}`, t: step.t, title: step.title, det: step.det,
+        mi, si, key: `${mi}-${si}`, t: step.t, shell: step.shell, det: step.det,
         in: step.in, out: step.out, status: step.status, time: step.time, file: step.file,
         bucket: bucketOf(step.t),
       }));
@@ -95,22 +95,22 @@ export function ReportView() {
 
   const nav: { key: Section; label: string; icon: string; count?: number }[] = [
     { key: 'overview', label: 'Traj', icon: 'spark' },
-    { key: 'tools', label: '过程', icon: 'route', count: steps.length },
-    { key: 'files', label: '文件', icon: 'folder', count: files.length },
-    { key: 'turns', label: '轮次', icon: 'chat', count: turns.length },
+    { key: 'tools', label: t('report.process'), icon: 'route', count: steps.length },
+    { key: 'files', label: t('term.files'), icon: 'folder', count: files.length },
+    { key: 'turns', label: t('report.turns'), icon: 'chat', count: turns.length },
   ];
 
   return (
     <div className="report-shell" data-testid="report-view">
       <header className="report-header">
-        <div className="report-kicker"><Icon name="chart" />Agent Traj</div>
+        <div className="report-kicker"><Icon name="chart" />Agent {t('term.trajectory')}</div>
         <div className="report-title-row">
-          <div><h2>{text(active.title)}</h2><p>结果、过程和产物保留在同一条可追溯记录中。</p></div>
-          <span className={`report-state${active.live ? ' live' : ''}`}><Icon name={active.live ? 'refresh' : 'check'} />{active.live ? '执行中' : '已同步'}</span>
+          <div><h2>{text(active.title)}</h2><p>{t('report.tagline')}</p></div>
+          <span className={`report-state${active.live ? ' live' : ''}`}><Icon name={active.live ? 'refresh' : 'check'} />{active.live ? t('report.running') : t('report.synced')}</span>
         </div>
       </header>
 
-      <nav className="report-nav scroll" aria-label="Agent Traj 视图">
+      <nav className="report-nav scroll" aria-label={t('report.views')}>
         {nav.map(item => (
           <button
             key={item.key}
@@ -131,23 +131,23 @@ export function ReportView() {
         {section === 'overview' && (
           <div className="report-overview" data-testid="report-overview">
             <div className="report-kpis" data-testid="report-kpis">
-              <Fact value={String(turns.length)} label="轮对话" />
-              <Fact value={String(steps.length)} label={`步执行 · ${toolRunning ? `${toolRunning} 进行中` : `${toolDone} 完成`}`} />
-              <Fact value={String(files.length)} label="个工作区文件" />
-              <Fact value={fmtMs(duration)} label={`${fmtTok(totalTokens)} response tokens · 缓存 ${Math.round(cacheHitRate * 100)}%`} />
+              <Fact value={String(turns.length)} label={t('report.turnFact')} />
+              <Fact value={String(steps.length)} label={t('report.stepFact', { status: toolRunning ? t('report.runningCount', { count: toolRunning }) : t('report.completeCount', { count: toolDone }) })} />
+              <Fact value={String(files.length)} label={t('report.fileFact')} />
+              <Fact value={fmtMs(duration)} label={t('report.tokenFact', { tokens: fmtTok(totalTokens), cache: Math.round(cacheHitRate * 100) })} />
             </div>
 
             <section className="report-block">
-              <div className="report-block-head"><div><b>最近轮次</b><span>从结论返回每一轮的执行证据</span></div><span>{turns.length}</span></div>
+              <div className="report-block-head"><div><b>{t('report.recentTurns')}</b><span>{t('report.recentTurnsHint')}</span></div><span>{turns.length}</span></div>
               <div className="report-turn-feed">
-                {turns.length === 0 && <Empty>完成一次任务后，这里会生成 Traj 记录。</Empty>}
+                {turns.length === 0 && <Empty>{t('report.noTrajectory')}</Empty>}
                 {[...turns].reverse().slice(0, 6).map(({ m, mi }, reverseIndex) => {
                   const order = turns.length - reverseIndex;
                   const toolCount = (m.traj || []).filter(step => step.t !== 'think').length;
                   return (
                     <button className="report-turn-card" data-testid="report-turn-card" key={mi} onClick={() => openTurn(mi)}>
                       <span className="report-turn-index">{String(order).padStart(2, '0')}</span>
-                      <span className="report-turn-copy"><b>{text(answerOf(m))}</b><small>{toolCount} 次工具调用 · {m.artifacts?.length || 0} 个本轮产物 · {fmtMs(m.stats?.duration)}</small></span>
+                      <span className="report-turn-copy"><b>{text(answerOf(m))}</b><small>{t('report.turnSummary', { tools: toolCount, artifacts: m.artifacts?.length || 0, duration: fmtMs(m.stats?.duration) })}</small></span>
                       <Icon name="chevron" className="report-open-icon" />
                     </button>
                   );
@@ -156,14 +156,14 @@ export function ReportView() {
             </section>
 
             <section className="report-block">
-              <div className="report-block-head"><div><b>工作区文件</b><span>最近可用的输入与产物</span></div><button onClick={() => setSection('files')}>查看全部</button></div>
+              <div className="report-block-head"><div><b>{t('report.workspaceFiles')}</b><span>{t('report.recentFilesHint')}</span></div><button onClick={() => setSection('files')}>{t('report.viewAll')}</button></div>
               <div className="report-file-strip">
-                {files.length === 0 && <Empty>工作区还没有文件。</Empty>}
+                {files.length === 0 && <Empty>{t('report.noFiles')}</Empty>}
                 {files.slice(0, 6).map((file, index) => (
                   <button key={(file.path || file.name) + index} onClick={() => openInCanvas(file.path || file.name)}>
                     <span className={`tree-ico ftype-${file.type}`}><Icon name={fileIcon(file.type)} /></span>
                     <span><b>{text(file.name)}</b><small>{text(file.size || file.type)}</small></span>
-                    <span className="rarr">打开 ↗</span>
+                    <span className="rarr">{t('report.open')}</span>
                   </button>
                 ))}
               </div>
@@ -173,9 +173,9 @@ export function ReportView() {
 
         {section === 'tools' && (
           <div className="report-section" data-testid="report-tools">
-            <div className="report-section-head"><div><b>执行过程</b><span>按类型筛选，展开查看输入与输出</span></div></div>
+            <div className="report-section-head"><div><b>{t('report.process')}</b><span>{t('report.processHint')}</span></div></div>
             <div className="report-filter">
-              {BUCKETS.map(bucket => (
+              {buckets().map(bucket => (
                 <button key={bucket.key} className={`ft${toolFilter === bucket.key ? ' on' : ''}`} data-testid="report-filter" data-bucket={bucket.key} aria-pressed={toolFilter === bucket.key} onClick={() => setToolFilter(bucket.key)}>
                   {bucket.label}<span className="ft-cnt">{bucket.key === 'all' ? steps.length : steps.filter(step => step.bucket === bucket.key).length}</span>
                 </button>
@@ -183,7 +183,7 @@ export function ReportView() {
             </div>
             <div className="report-table-scroll scroll">
               <div className="report-ledger report-tools-table" data-testid="report-tools-table">
-                {shownSteps.length === 0 && <Empty>没有匹配的工具调用。</Empty>}
+                {shownSteps.length === 0 && <Empty>{t('report.noMatchingTools')}</Empty>}
                 {shownSteps.map((step, index) => (
                   <StepItem key={step.key} step={step} index={index} open={expanded === step.key} onJump={() => showStep(step.mi, step.si)} onToggle={() => setExpanded(current => current === step.key ? null : step.key)} />
                 ))}
@@ -194,12 +194,12 @@ export function ReportView() {
 
         {section === 'files' && (
           <div className="report-section" data-testid="report-files">
-            <div className="report-section-head"><div><b>工作区文件</b><span>输入、生成物与 Office 导入都在这里</span></div><span>{files.length} 个</span></div>
+            <div className="report-section-head"><div><b>{t('report.workspaceFiles')}</b><span>{t('report.filesHint')}</span></div><span>{t('common.fileCount', { count: files.length })}</span></div>
             <div className="report-table-scroll scroll">
               <div className="report-file-grid report-files-table" data-testid="report-files-table">
-                {files.length === 0 && <Empty>还没有数据产物。</Empty>}
+                {files.length === 0 && <Empty>{t('report.noArtifacts')}</Empty>}
                 {files.map((file, index) => (
-                  <button key={(file.path || file.name) + index} className="report-file-card" data-testid="report-file-row" aria-label={`打开文件 ${file.name}`} onClick={() => openInCanvas(file.path || file.name)}>
+                  <button key={(file.path || file.name) + index} className="report-file-card" data-testid="report-file-row" aria-label={t('report.openFile', { name: file.name })} onClick={() => openInCanvas(file.path || file.name)}>
                     <span className={`report-file-icon ftype-${file.type}`}><Icon name={fileIcon(file.type)} /></span>
                     <span className="report-file-copy"><b>{text(file.name)}</b><small>{text(file.path || file.type)}</small></span>
                     <span className="report-file-size">{text(file.size || '—')}</span>
@@ -213,15 +213,15 @@ export function ReportView() {
 
         {section === 'turns' && (
           <div className="report-section" data-testid="report-turns">
-            <div className="report-section-head"><div><b>对话轮次</b><span>按轮次回看输出、速度与产物</span></div><span>{turns.length} 轮</span></div>
+            <div className="report-section-head"><div><b>{t('report.turns')}</b><span>{t('report.turnsHint')}</span></div><span>{t('common.turnCount', { count: turns.length })}</span></div>
             <div className="report-table-scroll scroll">
               <div className="report-turn-list report-turns-table" data-testid="report-turns-table">
-                {turns.length === 0 && <Empty>还没有对话轮次。</Empty>}
+                {turns.length === 0 && <Empty>{t('report.noTurns')}</Empty>}
                 {turns.map(({ m, mi }, index) => (
-                  <button key={mi} className="report-turn-row" data-testid="report-turn-row" aria-label={`打开第 ${index + 1} 轮执行详情`} onClick={() => openTurn(mi)}>
+                  <button key={mi} className="report-turn-row" data-testid="report-turn-row" aria-label={t('report.openTurn', { turn: index + 1 })} onClick={() => openTurn(mi)}>
                     <span className="report-turn-index">{String(index + 1).padStart(2, '0')}</span>
-                    <span className="report-turn-copy"><b>{text(answerOf(m))}</b><small>{(m.traj || []).length} 步 · {fmtTok(m.stats?.input)} 输入 · {fmtTok(m.stats?.output)} 输出 · 缓存 {Math.round((m.stats?.cacheHitRate || 0) * 100)}%</small></span>
-                    <span className="report-turn-metrics"><b>{fmtMs(m.stats?.duration)}</b><small>{m.artifacts?.length || 0} 个产物</small></span>
+                    <span className="report-turn-copy"><b>{text(answerOf(m))}</b><small>{t('report.turnMetrics', { steps: (m.traj || []).length, input: fmtTok(m.stats?.input), output: fmtTok(m.stats?.output), cache: Math.round((m.stats?.cacheHitRate || 0) * 100) })}</small></span>
+                    <span className="report-turn-metrics"><b>{fmtMs(m.stats?.duration)}</b><small>{t('report.artifactCount', { count: m.artifacts?.length || 0 })}</small></span>
                     <Icon name="chevron" className="report-open-icon" />
                   </button>
                 ))}
@@ -242,22 +242,23 @@ function Empty({ children }: { children: string }) {
 }
 
 function StepItem({ step, index, open, onJump, onToggle }: { step: FlatStep; index: number; open: boolean; onJump(): void; onToggle(): void }) {
+  const label = trajectoryLabel(step.t, step.shell);
   return (
     <div className={`report-tool-item${open ? ' open' : ''}`}>
       <div className="report-tool-row">
-        <button className="report-tool-main" data-testid="report-tool-row" aria-label={`打开工具步骤 ${step.title}`} onClick={onJump}>
+        <button className="report-tool-main" data-testid="report-tool-row" aria-label={t('report.openStep', { title: label })} onClick={onJump}>
           <span className="report-tool-index">{String(index + 1).padStart(2, '0')}</span>
           <span className={`report-tool-icon st-${step.t}`}><Icon name={trajIcon(step.t)} /></span>
-          <span className="report-tool-copy"><b>{text(step.title)}</b><small>{text(step.det || '无附加信息')}</small></span>
+          <span className="report-tool-copy"><b>{label}</b><small>{text(step.det || t('report.noDetails'))}</small></span>
           {step.file && <span className="rfile">{text(step.file)}</span>}
-          <span className={`badge ${step.status === 'running' ? 'live' : 'done'}`}>{step.status === 'running' ? '进行中' : text(step.time || '完成')}</span>
+          <span className={`badge ${step.status === 'running' ? 'live' : 'done'}`}>{step.status === 'running' ? t('common.running') : text(step.time || t('common.complete'))}</span>
         </button>
-        <button className="row-toggle" data-testid="tool-toggle" aria-label={open ? '收起工具详情' : '展开工具详情'} aria-expanded={open} onClick={onToggle}><Icon name="chevron" className={`chev${open ? ' open' : ''}`} /></button>
+        <button className="row-toggle" data-testid="tool-toggle" aria-label={open ? t('report.collapse') : t('report.expand')} aria-expanded={open} onClick={onToggle}><Icon name="chevron" className={`chev${open ? ' open' : ''}`} /></button>
       </div>
       {open && (
         <div className="detail-grid">
-          <div><span className="lab">输入</span><pre>{text(step.in || '（无）')}</pre></div>
-          <div><span className="lab">输出</span><pre>{text(step.out || '（无输出）')}</pre></div>
+          <div><span className="lab">{t('common.input')}</span><pre>{text(step.in || t('common.none'))}</pre></div>
+          <div><span className="lab">{t('common.output')}</span><pre>{text(step.out || t('common.noOutput'))}</pre></div>
         </div>
       )}
     </div>

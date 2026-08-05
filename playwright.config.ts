@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test';
 
 // Keep verification isolated from the normal dev (:5173) and production (:4173) servers.
 const port = 43173;
+const loopbackNoProxy = '127.0.0.1,localhost';
+process.env.NO_PROXY = [process.env.NO_PROXY, loopbackNoProxy].filter(Boolean).join(',');
+process.env.no_proxy = [process.env.no_proxy, loopbackNoProxy].filter(Boolean).join(',');
 
 export default defineConfig({
   testDir: './tests',
@@ -11,7 +14,8 @@ export default defineConfig({
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['line'], ['html', { outputFolder: 'output/playwright-report', open: 'never' }]] : 'line',
-  timeout: 30_000,
+  // Windows cold-start compilation can cross 30s when Mermaid/Office renderers are first loaded.
+  timeout: 60_000,
   expect: { timeout: 7_000 },
   use: {
     baseURL: `http://127.0.0.1:${port}`,

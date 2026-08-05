@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import type { AgentContentBlock, Artifact, FileNode, Message, TrajStep } from '../../core/agent/protocol';
-import { Icon, MdText, PiIcon, fileIcon, fmtMs, text, trajIcon } from '../../ui';
+import { FileUploadIcon, Icon, MdText, PiIcon, artifactIcon, compactTurnMetrics, fileIcon, readBrand, relativeTimeLabel, sessionGroupLabel, t, term, text, trajectoryLabel, trajIcon } from '../../ui';
 import {
   createSkillFromTurn as createWorkspaceSkillFromTurn,
   importWorkspaceFile,
@@ -9,6 +9,7 @@ import {
   useSkills,
   useWorkspace,
 } from '../../workspace';
+import { useLoopPet } from '../hooks/use-loop-pet';
 
 interface MentionItem {
   kind: 'skill' | 'file';
@@ -30,15 +31,38 @@ function fileMention(path: string): string {
   return /\s/.test(path) ? `@"${path}"` : `@${path}`;
 }
 
+interface SessionSkillDraft {
+  id: string;
+  directory: string;
+  path: string;
+  sourceMessageIndex: number;
+}
+
+function sessionCacheHitRates(messages: readonly Message[]): Array<number | undefined> {
+  let input = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  return messages.map(message => {
+    if (message.role !== 'agent' || !message.stats) return undefined;
+    const tokenCount = (value: number | undefined) => Number.isFinite(value) && Number(value) > 0
+      ? Number(value)
+      : 0;
+    input += tokenCount(message.stats.input);
+    cacheRead += tokenCount(message.stats.cacheRead);
+    cacheWrite += tokenCount(message.stats.cacheWrite);
+    const promptTokens = input + cacheRead + cacheWrite;
+    return promptTokens > 0 ? cacheRead / promptTokens : undefined;
+  });
+}
+
 export function ConversationPanel() {
   const {
-    active, showStep, openInCanvas, openTurn, sendMessage, steerMessage, interruptWithSteer, flashMsg, setFlashMsg, error, loading, connectionStatus,
-    composerDraft: input, setComposerDraft: setInput, setView,
+    active, goal, openInCanvas, openTurn, showStep, sendMessage, steerMessage, interruptWithSteer, flashMsg, setFlashMsg, error, loading, connectionStatus,
+    composerDraft: input, setComposerDraft: setInput,
   } = useWorkspace();
   const skills = useSkills();
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [sendTick, setSendTick] = useState(0);
@@ -50,6 +74,9 @@ export function ConversationPanel() {
   const [steerDraft, setSteerDraft] = useState<string | null>(null);
   const steerDraftAtRef = useRef(0);
   const [creatingSkill, setCreatingSkill] = useState<number | null>(null);
+  const [skillDraft, setSkillDraft] = useState<SessionSkillDraft | null>(null);
+
+  useEffect(() => { setSkillDraft(null); }, [active.id]);
 
   useEffect(() => {
     if (flashMsg == null || !dialogRef.current) return;
@@ -209,7 +236,11 @@ export function ConversationPanel() {
     try {
       if (!active.id) return;
       const result = await createWorkspaceSkillFromTurn(active.id, index);
-      if (result.ok) await setView('skill');
+      if (result.ok && result.draft) {
+        setSkillDraft(result.draft);
+        setInput(t('conversation.skillDraftValidationPrompt', { path: result.draft.path }));
+        requestAnimationFrame(() => { autosize(); taRef.current?.focus(); });
+      }
     } finally {
       setCreatingSkill(null);
     }
@@ -233,7 +264,7 @@ export function ConversationPanel() {
     if (mention.trigger === '/') {
       const localSkills: MentionItem[] = skills
         .filter(skill => skill.enabled && (!q || skill.name.toLowerCase().includes(q) || skill.desc.toLowerCase().includes(q)))
-        .map(skill => ({ kind: 'skill' as const, id: skill.id, name: skill.name, desc: skill.desc || '本地 Skill', icon: 'blocks', command: skillSlashCommand(skill) }));
+        .map(skill => ({ kind: 'skill' as const, id: skill.id, name: skill.name, desc: skill.desc || t('conversation.skillFallback'), icon: 'blocks', command: skillSlashCommand(skill) }));
       return localSkills.slice(0, 8);
     }
     return files
@@ -286,7 +317,26 @@ export function ConversationPanel() {
   };
 
   const messages = active.messages ?? [];
-  const dateLabel = active.group === '今天' ? `TODAY · ${active.time}` : (active.group?.toUpperCase() ?? '');
+  const skillDraftValidated = useMemo(() => {
+    if (!skillDraft) return false;
+    const validationTurn = messages.findIndex((message, index) => index > skillDraft.sourceMessageIndex && message.role === 'user' && (
+      (message.text || '').includes(`@${skillDraft.path}`) ||
+      (message.attachments || []).some(attachment => (attachment.path || attachment.name) === skillDraft.path)
+    ));
+    return validationTurn >= 0 && messages.slice(validationTurn + 1).some(message => message.role === 'agent' && message.status !== 'running');
+  }, [messages, skillDraft]);
+
+  const discussSkillContribution = () => {
+    if (!skillDraft || !skillDraftValidated) return;
+    setInput(t('conversation.skillDraftContributionPrompt', { path: skillDraft.path }));
+    requestAnimationFrame(() => { autosize(); taRef.current?.focus(); });
+  };
+  const cumulativeCacheHitRates = useMemo(() => sessionCacheHitRates(messages), [messages]);
+  const loopPet = useLoopPet(loading, loading ? `${active.id}:${messages.length}` : '');
+  const groupLabel = sessionGroupLabel(active.group || '');
+  const dateLabel = groupLabel === t('session.today') || groupLabel === t('session.existingToday')
+    ? t('conversation.todayAt', { time: relativeTimeLabel(active.time) })
+    : groupLabel.toUpperCase();
   const isNewConversation = messages.length === 0;
   const composer = <Composer
     value={input}
@@ -330,49 +380,46 @@ export function ConversationPanel() {
                     {!!m.attachments?.length && (
                       <div className="user-attachments" data-testid="user-attachments">
                         {m.attachments.map((attachment, index) => (
-                          <button type="button" key={(attachment.path || attachment.name) + index} onClick={() => void openInCanvas(attachment.path || attachment.name)} title={`在 Canvas 打开 ${attachment.path || attachment.name}`}>
-                            <span className="tree-ico"><Icon name={fileIcon(attachment.type)} /></span><span><b>{text(attachment.name)}</b><small>工作区引用</small></span><Icon name="frame" />
+                          <button type="button" key={(attachment.path || attachment.name) + index} onClick={() => void openInCanvas(attachment.path || attachment.name)} title={t('conversation.openAttachment', { path: attachment.path || attachment.name })}>
+                            <span className="tree-ico"><Icon name={fileIcon(attachment.type)} /></span><span><b>{text(attachment.name)}</b><small>{t('conversation.workspaceReference')}</small></span><Icon name="frame" />
                           </button>
                         ))}
                       </div>
                     )}
                     {!!m.workspaceChanges?.length && (
                       <div className="user-workspace-changes" data-testid="user-workspace-changes">
-                        <span className="user-change-label"><Icon name="edit" />已同步 Canvas 修改</span>
+                        <span className="user-change-label"><Icon name="edit" />{t('conversation.syncedCanvasChanges')}</span>
                         {m.workspaceChanges.map((change, index) => (
-                          <button type="button" key={change.path + index} onClick={() => void openInCanvas(change.path)} title={`打开已同步的 ${change.path}`}>
+                          <button type="button" key={change.path + index} onClick={() => void openInCanvas(change.path)} title={t('conversation.openSyncedChange', { path: change.path })}>
                             <span>{text(change.path)}</span><Icon name="frame" />
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
-                  <div className="msg-acts user-msg-acts" aria-label="消息操作">
-                    <button type="button" data-testid="message-edit" disabled={loading || !m.text} onClick={() => editBubble(m)}><Icon name="edit" />编辑</button>
-                    <button type="button" data-testid="message-resend" disabled={loading || !m.text} onClick={() => resendBubble(mi)}><Icon name="refresh" />重新发送</button>
+                  <div className="msg-acts user-msg-acts" aria-label={t('conversation.messageActions')}>
+                    <button type="button" data-testid="message-edit" disabled={loading || !m.text} onClick={() => editBubble(m)}><Icon name="edit" />{t('conversation.editMessage')}</button>
+                    <button type="button" data-testid="message-resend" disabled={loading || !m.text} onClick={() => resendBubble(mi)}><Icon name="refresh" />{t('conversation.resendMessage')}</button>
                   </div>
-                  <div className="when">{m.when || '刚刚'}</div>
+                  <div className="when">{m.when || t('conversation.justNow')}</div>
                 </article>
               ) : (
                 <AgentMessage
                   key={mi}
                   mi={mi}
                   m={m}
-                  open={expanded.has(mi)}
-                  onToggle={() => setExpanded(prev => {
-                    const next = new Set(prev);
-                    if (next.has(mi)) next.delete(mi); else next.add(mi);
-                    return next;
-                  })}
-                  onStep={(si) => showStep(mi, si)}
+                  cumulativeCacheHitRate={cumulativeCacheHitRates[mi]}
                   onOpenCanvas={(name) => openInCanvas(name)}
                   onOpenTurn={() => openTurn(mi)}
+                  onStep={(si) => void showStep(mi, si)}
+                  conciseMode={goal !== null}
                   flash={flashMsg === mi}
                   onResend={() => resendBubble(mi)}
                   onCreateSkill={() => void createSkillFromTurn(mi)}
                   actionDisabled={loading}
                   creatingSkill={creatingSkill === mi}
                   reconnecting={connectionStatus === 'reconnecting' && !messages.slice(mi + 1).some(message => message.role === 'agent')}
+                  loopPet={m.status === 'running' ? loopPet : null}
                 />
               )
             )}
@@ -382,17 +429,25 @@ export function ConversationPanel() {
 
       {loading && !followingStream && (
         <button className="stream-jump" data-testid="stream-jump" onClick={jumpToLatest}>
-          回到最新 <Icon name="chevron" />
+          {t('conversation.jumpLatest')} <Icon name="chevron" />
         </button>
       )}
 
       {error && (
-        <div data-testid="error-bar" style={{
-          position: 'absolute', left: 0, right: 0, bottom: 168, margin: '0 auto', maxWidth: 640,
-          padding: '8px 14px', border: '1px solid var(--border-strong)', borderRadius: 6,
-          background: 'var(--error-soft)', color: 'var(--error)', fontSize: 12.5, lineHeight: 1.5,
-          textAlign: 'center', pointerEvents: 'auto',
-        }}>{text(error)}</div>
+        <div className="conversation-error" data-testid="error-bar" role="alert">{text(error)}</div>
+      )}
+
+      {skillDraft && (
+        <div className={`session-skill-draft${skillDraftValidated ? ' validated' : ''}`} data-testid="session-skill-draft" role="status">
+          <span className="session-skill-draft-icon"><Icon name={skillDraftValidated ? 'check' : 'file'} /></span>
+          <span className="session-skill-draft-copy">
+            <b>{t(skillDraftValidated ? 'conversation.skillDraftValidated' : 'conversation.skillDraftReady')}</b>
+            <small>{t(skillDraftValidated ? 'conversation.skillDraftValidatedHint' : 'conversation.skillDraftReadyHint', { path: skillDraft.path })}</small>
+          </span>
+          <button type="button" className="pill" onClick={() => void openInCanvas(skillDraft.path)}><Icon name="frame" />{t('conversation.skillDraftOpen')}</button>
+          {skillDraftValidated && <button type="button" className="send session-skill-contribute" data-testid="skill-draft-contribute" onClick={discussSkillContribution}><Icon name="blocks" />{t('conversation.skillDraftContribute')}</button>}
+          <button type="button" className="session-skill-draft-dismiss" aria-label={t('common.close')} onClick={() => setSkillDraft(null)}><Icon name="x" /></button>
+        </div>
       )}
 
       {!isNewConversation && composer}
@@ -400,153 +455,177 @@ export function ConversationPanel() {
   );
 }
 function AgentMessage({
-  mi, m, open, onToggle, onStep, onOpenCanvas, onOpenTurn, flash, onResend, onCreateSkill, actionDisabled, creatingSkill, reconnecting
+  mi, m, cumulativeCacheHitRate, onOpenCanvas, onOpenTurn, onStep, conciseMode, flash, onResend, onCreateSkill, actionDisabled,
+  creatingSkill, reconnecting, loopPet,
 }: {
   mi: number;
   m: Message;
-  open: boolean;
-  onToggle(): void;
-  onStep(si: number): void;
+  cumulativeCacheHitRate?: number;
   onOpenCanvas(name: string): void;
   onOpenTurn(): void;
+  onStep(index: number): void;
+  conciseMode: boolean;
   flash: boolean;
   onResend(): void;
   onCreateSkill(): void;
   actionDisabled: boolean;
   creatingSkill: boolean;
   reconnecting: boolean;
+  loopPet: string | null;
 }) {
   const live = m.status === 'running';
-  const traj = m.traj ?? [];
   const blocks = m.blocks ?? [];
-  const hasFlow = blocks.length > 0;
   const [copied, setCopied] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const copyTimer = useRef<number | null>(null);
-  const copyText = hasFlow
-    ? blocks.filter((block): block is Extract<AgentContentBlock, { kind: 'text' }> => block.kind === 'text').map(block => block.text).join('\n\n')
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const copyText = blocks.length
+    ? answerTextBlocks(blocks, conciseMode).map(block => block.text).join('\n\n')
     : [m.intro, m.outro].filter(Boolean).join('\n\n');
+  const latestStep = [...(m.traj ?? [])].reverse().find(step => step.status === 'running')
+    ?? m.traj?.at(-1);
 
   useEffect(() => () => {
     if (copyTimer.current != null) window.clearTimeout(copyTimer.current);
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeFromOutside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setMenuOpen(false);
+      window.requestAnimationFrame(() => menuButtonRef.current?.focus());
+    };
+    document.addEventListener('pointerdown', closeFromOutside);
+    document.addEventListener('keydown', closeFromKeyboard);
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside);
+      document.removeEventListener('keydown', closeFromKeyboard);
+    };
+  }, [menuOpen]);
+
   const copyAnswer = async () => {
     if (!copyText) return;
     await navigator.clipboard.writeText(copyText);
     setCopied(true);
+    setMenuOpen(false);
     if (copyTimer.current != null) window.clearTimeout(copyTimer.current);
     copyTimer.current = window.setTimeout(() => setCopied(false), 1500);
   };
 
+  const runAction = (action: () => void) => {
+    setMenuOpen(false);
+    action();
+  };
+
   return (
-    <article className={`msg${flash ? ' flash' : ''}`} data-testid="agent-message" data-msg={mi} aria-busy={live}>
+    <article className={`msg agent-msg${flash ? ' flash' : ''}`} data-testid="agent-message" data-msg={mi} aria-busy={live}>
       <div className="agent-head">
         <span className="agent-avatar"><PiIcon /></span>
-        <span className="stat">
-          {live ? <><span className="live" />正在执行任务…</> : <><Icon name="check" /> 已完成</>}
-        </span>
-        {reconnecting && (
-          <span className="agent-reconnecting" data-testid="agent-reconnecting" role="status">
-            <Icon name="refresh" />Reconnecting…
+        {live && (
+          <span
+            className={`stat${reconnecting ? ' reconnecting' : ''}`}
+            data-testid={reconnecting ? 'agent-reconnecting' : 'agent-running-status'}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="live" />
+            {runningLabel(latestStep, reconnecting)}
           </span>
         )}
-        <button type="button" className="head-arr" data-testid="open-turn" title="查看本轮详情" onClick={onOpenTurn}>查看过程 ↗</button>
-      </div>
-      {hasFlow ? (
-        <AgentFlow
-          artifacts={m.artifacts ?? []}
-          blocks={blocks}
-          steps={traj}
-          live={live}
-          onStep={onStep}
-          onOpenArtifact={onOpenCanvas}
-        />
-      ) : (
-        <>
-          {m.intro && (
-            <div className="answer">
-              {live ? <p>{m.intro}</p> : <MdText className="md-body" text={m.intro} />}
+        {loopPet && <pre className="loop-pet" data-testid="loop-pet" aria-hidden="true">{loopPet}</pre>}
+        <div className={`message-actions${menuOpen ? ' open' : ''}`} ref={menuRef}>
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className={`message-more${copied ? ' copied' : ''}`}
+            data-testid="message-more"
+            aria-label={copied ? t('common.copied') : t('conversation.answerActions')}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(open => !open)}
+          >
+            <Icon name={copied ? 'check' : 'more'} />
+          </button>
+          {menuOpen && (
+            <div className="message-action-menu" data-testid="message-action-menu" role="menu">
+              <button type="button" role="menuitem" data-testid="message-copy" disabled={!copyText} onClick={() => void copyAnswer()}>
+                <Icon name="copy" />{t('common.copy')}
+              </button>
+              <button type="button" role="menuitem" data-testid="message-resend" disabled={actionDisabled} onClick={() => runAction(onResend)}>
+                <Icon name="refresh" />{t('conversation.regenerate')}
+              </button>
+              <button type="button" role="menuitem" data-testid="message-create-skill" disabled={live || actionDisabled || creatingSkill} onClick={() => runAction(onCreateSkill)}>
+                <Icon name="blocks" />{creatingSkill ? t('common.creating') : t('conversation.createSkill')}
+              </button>
+              <button type="button" role="menuitem" data-testid="open-turn" onClick={() => runAction(onOpenTurn)}>
+                <Icon name="route" />{t('conversation.runDetails')}
+              </button>
             </div>
           )}
-          {traj.length > 0 && (
-        <section className={`traj${open ? '' : ' collapsed'}`} data-testid="trajectory">
-          <button type="button" className="traj-head" data-testid="traj-toggle" aria-expanded={open} onClick={onToggle}>
-            <span className="tico"><Icon name="route" /></span>
-            <span className="t-title">Agent 执行轨迹</span>
-            <span className="t-count">{traj.length} 步</span>
-            <span className="spacer" />
-            <span className={`badge ${live ? 'live' : 'done'}`}>{live ? 'LIVE' : '已完成'}</span>
-            <span className="chev"><Icon name="chevron" className="chev" /></span>
-          </button>
-          <div className="traj-body"><div className="tbody">
-            {traj.map((s, i) => (
-              <button type="button" key={i} className={`trow${s.t === 'think' ? ' think' : ''}`} data-testid="traj-row" data-kind={s.t} onClick={() => onStep(i)}>
-                <span className="rail" />
-                <span className={`ticon ${s.status}`}><Icon name={trajIcon(s.t)} /></span>
-                <span className="tmain"><b>{text(s.title)}</b><span className="tdet">{text(s.det)}</span></span>
-                <span className="ttime">{s.time}</span>
-              </button>
-            ))}
-          </div></div>
-        </section>
-          )}
-          {m.outro && <div className="answer"><MdText className="md-body" text={m.outro} /></div>}
-        </>
-      )}
-      {!hasFlow && !!m.artifacts?.length && (
-        <AgentFlow
-          artifacts={m.artifacts}
-          blocks={[]}
-          steps={traj}
-          live={live}
-          onStep={onStep}
-          onOpenArtifact={onOpenCanvas}
-        />
-      )}
-      {live && (
-        <div className="agent-thinking-bar" data-testid="agent-thinking-bar" role="status" aria-live="polite">
-          <span className="thinking-dot" />
-          <span className="thinking-dot" />
-          <span className="thinking-dot" />
         </div>
-      )}
-      <div className="msg-acts">
-        <button
-          className={copied ? 'copied' : ''}
-          data-testid="message-copy"
-          disabled={!copyText}
-          onClick={() => void copyAnswer()}
-        >
-          <Icon name={copied ? 'check' : 'copy'} /> {copied ? '已复制' : '复制回答'}
-        </button>
-        <button type="button" data-testid="message-resend" disabled={actionDisabled} onClick={onResend}><Icon name="refresh" />重新生成</button>
-        <button type="button" data-testid="message-create-skill" disabled={live || actionDisabled || creatingSkill} onClick={onCreateSkill}><Icon name="blocks" />{creatingSkill ? '生成中…' : '生成 Skill'}</button>
       </div>
-      {m.stats && !live && (
-        <div className="turn-stats" data-testid="turn-stats">
-          <span><b>TTFT</b> {fmtMs(m.stats.ttft)}</span>
-          <span><b>TPOT</b> {m.stats.tpot > 0 ? `${m.stats.tpot.toFixed(0)}ms/tok` : '—'}</span>
-          <span><b>输出</b> {m.stats.output} tok</span>
-          <span><b>未缓存输入</b> {m.stats.input} tok</span>
-          {m.stats.totalTokens != null && <span><b>总量</b> {m.stats.totalTokens} tok</span>}
-          {m.stats.cacheHitRate != null && <span><b>缓存</b> {Math.round(m.stats.cacheHitRate * 100)}%</span>}
-          <span><b>耗时</b> {(m.stats.duration / 1000).toFixed(1)}s</span>
-        </div>
-      )}
+
+      <AgentAnswer
+        artifacts={m.artifacts ?? []}
+        blocks={blocks}
+        steps={m.traj ?? []}
+        intro={m.intro}
+        outro={m.outro}
+        live={live}
+        conciseMode={conciseMode}
+        onStep={onStep}
+        onOpenArtifact={onOpenCanvas}
+      />
+
+      {m.stats && !live && <CompactStats stats={m.stats} cumulativeCacheHitRate={cumulativeCacheHitRate} />}
     </article>
   );
 }
 
-function AgentFlow({
-  artifacts, blocks, steps, live, onStep, onOpenArtifact,
+function runningLabel(step: TrajStep | undefined, reconnecting: boolean): string {
+  if (reconnecting) return t('conversation.reconnecting');
+  if (!step) return t('conversation.working');
+  if (step.t === 'code') return `${step.shell === 'powershell' ? 'PowerShell' : 'Bash'}…`;
+  const labels = {
+    think: 'conversation.thinkingProgress',
+    read: 'conversation.reading',
+    search: 'conversation.searching',
+    write: 'conversation.writing',
+    analyze: 'conversation.analyzing',
+    goal: 'conversation.processingGoal',
+  } as const;
+  const label = labels[step.t as keyof typeof labels];
+  return label ? t(label) : t('conversation.working');
+}
+
+function AgentAnswer({
+  artifacts, blocks, steps, intro, outro, live, conciseMode, onStep, onOpenArtifact,
 }: {
   artifacts: Artifact[];
   blocks: AgentContentBlock[];
   steps: TrajStep[];
+  intro?: string;
+  outro?: string;
   live: boolean;
-  onStep(si: number): void;
+  conciseMode: boolean;
+  onStep(index: number): void;
   onOpenArtifact(path: string): void;
 }) {
+  const textBlocks = answerTextBlocks(blocks, conciseMode);
+  const hasOrderedSteps = blocks.some(block => block.kind === 'step');
+  const flowBlocks: AgentContentBlock[] = hasOrderedSteps
+    ? blocks
+    : [
+      ...(blocks.length ? blocks : intro ? [{ kind: 'text' as const, text: intro }] : []),
+      ...steps.map((_, step) => ({ kind: 'step' as const, step })),
+      ...(!blocks.length && outro && outro !== intro ? [{ kind: 'text' as const, text: outro }] : []),
+    ];
   const finalArtifacts = artifacts.filter((artifact, index) => {
     const key = artifactPathKeys(artifact.path || artifact.name)[0];
     return artifacts.findIndex(candidate =>
@@ -555,16 +634,90 @@ function AgentFlow({
   });
 
   return (
-    <div className="agent-flow" data-testid="agent-flow" aria-label="Agent 执行流">
+    <div className="agent-answer" data-testid="agent-answer">
+      {!conciseMode && (flowBlocks.length > 0 || steps.length > 0)
+        ? (
+          <AgentFlow
+            blocks={flowBlocks}
+            steps={steps}
+            live={live}
+            onStep={onStep}
+            onOpenArtifact={onOpenArtifact}
+          />
+        )
+        : textBlocks.length > 0
+        ? textBlocks.map((block, index) => {
+          const streaming = live && index === textBlocks.length - 1;
+          return (
+            <div className={`answer flow-text${streaming ? ' streaming' : ''}`} data-testid="flow-text" data-streaming={streaming || undefined} key={`text-${index}`}>
+              {streaming ? <p>{block.text}</p> : <MdText className="md-body" text={block.text} />}
+            </div>
+          );
+        })
+        : (
+          <>
+            {intro && <div className="answer">{live ? <p>{intro}</p> : <MdText className="md-body" text={intro} />}</div>}
+            {outro && outro !== intro && <div className="answer"><MdText className="md-body" text={outro} /></div>}
+          </>
+        )}
+      {!live && finalArtifacts.length > 0 && (
+        <div className="agent-artifacts" aria-label={t('conversation.artifacts')}>
+          {finalArtifacts.map((artifact, index) => {
+            const path = artifact.path || artifact.name;
+            return (
+              <button
+                type="button"
+                className="agent-artifact"
+                data-testid="agent-artifact"
+                data-artifact-path={path}
+                key={`${path}-${index}`}
+                onClick={() => onOpenArtifact(path)}
+              >
+                <span className={`agent-artifact-icon ftype-${artifact.type}`}><Icon name={artifactIcon(artifact.type)} /></span>
+                <span className="flow-step-copy">
+                  <b>{text(artifact.name)}</b>
+                  {path !== artifact.name && <small>{text(path)}</small>}
+                </span>
+                <span className="flow-step-target" aria-hidden="true">
+                  <span>{t('conversation.canvasTarget')}</span>
+                  <Icon name="frame" />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentFlow({
+  blocks, steps, live, onStep, onOpenArtifact,
+}: {
+  blocks: AgentContentBlock[];
+  steps: TrajStep[];
+  live: boolean;
+  onStep(index: number): void;
+  onOpenArtifact(path: string): void;
+}) {
+  const onStepRef = useRef(onStep);
+  const onOpenArtifactRef = useRef(onOpenArtifact);
+  onStepRef.current = onStep;
+  onOpenArtifactRef.current = onOpenArtifact;
+  const openStep = useCallback((index: number, artifactPath?: string) => {
+    if (artifactPath) onOpenArtifactRef.current(artifactPath);
+    else onStepRef.current(index);
+  }, []);
+
+  return (
+    <div className="agent-flow" data-testid="agent-flow" aria-label={t('conversation.agentTrajectory')}>
       {blocks.map((block, index) => {
         if (block.kind === 'text') {
           if (!block.text) return null;
           const streaming = live && index === blocks.length - 1;
           return (
             <div className={`answer flow-text${streaming ? ' streaming' : ''}`} data-testid="flow-text" data-streaming={streaming || undefined} key={`text-${index}`}>
-              {streaming
-                ? <p>{block.text}</p>
-                : <MdText className="md-body" text={block.text} />}
+              {streaming ? <p>{block.text}</p> : <MdText className="md-body" text={block.text} />}
             </div>
           );
         }
@@ -574,30 +727,115 @@ function AgentFlow({
           <AgentFlowStep
             artifactPath={step.file}
             key={`step-${block.step}`}
+            stepIndex={block.step}
             step={step}
-            onOpen={() => step.file ? onOpenArtifact(step.file) : onStep(block.step)}
+            onOpen={openStep}
           />
         );
       })}
-      {!live && finalArtifacts.map((artifact, index) => {
-        const path = artifact.path || artifact.name;
-        return (
-          <AgentFlowStep
-            artifactPath={path}
-            artifactType={artifact.type}
-            key={`final-artifact-${path}-${index}`}
-            step={{
-              t: 'write',
-              title: artifact.name,
-              det: artifact.label,
-              status: 'done',
-              time: '可打开',
-              file: path,
-            }}
-            onOpen={() => onOpenArtifact(path)}
-          />
-        );
-      })}
+    </div>
+  );
+}
+
+const AgentFlowStep = memo(function AgentFlowStep({
+  artifactPath, stepIndex, step, onOpen,
+}: {
+  artifactPath?: string;
+  stepIndex: number;
+  step: TrajStep;
+  onOpen(index: number, artifactPath?: string): void;
+}) {
+  const isThinking = step.t === 'think';
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const running = step.status === 'running';
+  const thinkingText = isThinking ? (step.text || step.det) : '';
+  const stepLabel = trajectoryLabel(step.t, step.shell);
+  return (
+    <div
+      className={`flow-step-shell${isThinking ? ' think' : ''}`}
+      data-testid="flow-step-shell"
+      data-kind={step.t}
+      data-status={step.status}
+      data-expanded={isThinking ? thinkingOpen : undefined}
+      data-artifact-path={artifactPath}
+    >
+      <button
+        type="button"
+        className={`flow-step${isThinking ? ' think' : ''}`}
+        data-testid="flow-step"
+        data-kind={step.t}
+        data-status={step.status}
+        aria-expanded={isThinking ? thinkingOpen : undefined}
+        aria-label={isThinking
+          ? t(thinkingOpen ? 'conversation.collapseThinking' : 'conversation.expandThinking')
+          : artifactPath
+            ? t('conversation.openArtifact', { path: artifactPath })
+            : t('conversation.openTrajectory', { title: stepLabel })}
+        onClick={isThinking ? () => setThinkingOpen(open => !open) : () => onOpen(stepIndex, artifactPath)}
+      >
+        <span className={`flow-step-icon ${step.status}`}><Icon name={trajIcon(step.t)} /></span>
+        <span className="flow-step-copy"><b>{stepLabel}</b>{step.det && <small>{text(step.det)}</small>}</span>
+        {(!isThinking || !running) && (
+          <span className={`flow-step-status ${step.status}`} role="status" aria-live="polite">
+            {running ? t('conversation.runningStatus') : <><Icon name="check" />{step.time}</>}
+          </span>
+        )}
+        <span className={`flow-step-target${isThinking ? ' disclosure' : ''}`} aria-hidden="true">
+          <span>{isThinking ? t(thinkingOpen ? 'common.close' : 'common.open') : t('conversation.canvasTarget')}</span>
+          <Icon name={isThinking ? 'chevron' : 'frame'} />
+        </span>
+      </button>
+      {thinkingOpen && thinkingText && (
+        <div className="flow-thinking" data-testid="flow-thinking" aria-label={t('conversation.fullThinking')}>
+          {text(thinkingText)}
+        </div>
+      )}
+    </div>
+  );
+});
+
+function answerTextBlocks(
+  blocks: AgentContentBlock[],
+  conciseMode: boolean,
+): Array<Extract<AgentContentBlock, { kind: 'text' }>> {
+  if (conciseMode) return finalAnswerTextBlocks(blocks);
+  return blocks.filter(
+    (block): block is Extract<AgentContentBlock, { kind: 'text' }> => block.kind === 'text' && !!block.text,
+  );
+}
+
+function finalAnswerTextBlocks(blocks: AgentContentBlock[]): Array<Extract<AgentContentBlock, { kind: 'text' }>> {
+  let lastStep = -1;
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (blocks[index].kind === 'step') {
+      lastStep = index;
+      break;
+    }
+  }
+  const trailing = blocks.slice(lastStep + 1).filter(
+    (block): block is Extract<AgentContentBlock, { kind: 'text' }> => block.kind === 'text' && !!block.text,
+  );
+  if (trailing.length) return trailing;
+  if (lastStep >= 0) {
+    for (let index = lastStep - 1; index >= 0; index -= 1) {
+      const block = blocks[index];
+      if (block.kind === 'text' && block.text) return [block];
+    }
+  }
+  return blocks.filter(
+    (block): block is Extract<AgentContentBlock, { kind: 'text' }> => block.kind === 'text' && !!block.text,
+  );
+}
+
+function CompactStats({ stats, cumulativeCacheHitRate }: {
+  stats: NonNullable<Message['stats']>;
+  cumulativeCacheHitRate?: number;
+}) {
+  const metrics = compactTurnMetrics(stats, cumulativeCacheHitRate);
+  if (!metrics.length) return null;
+  return (
+    <div className="turn-stats" data-testid="turn-stats" aria-label={t('conversation.runMetrics')}>
+      {metrics.map(metric => <span key={metric.label}><b>{metric.label}</b> {metric.value}</span>)}
     </div>
   );
 }
@@ -606,51 +844,6 @@ function artifactPathKeys(path: string): string[] {
   const normalized = path.replaceAll('\\', '/').replace(/^\.\//, '').toLocaleLowerCase();
   const leaf = normalized.split('/').at(-1);
   return leaf && leaf !== normalized ? [normalized, leaf] : [normalized];
-}
-
-function AgentFlowStep({
-  artifactPath, artifactType, step, onOpen,
-}: {
-  artifactPath?: string;
-  artifactType?: Artifact['type'];
-  step: TrajStep;
-  onOpen(): void;
-}) {
-  const running = step.status === 'running';
-  const thinkingText = step.t === 'think' ? (step.text || step.det) : '';
-  return (
-    <div
-      className={`flow-step-shell${step.t === 'think' ? ' think' : ''}`}
-      data-testid="flow-step-shell"
-      data-kind={step.t}
-      data-status={step.status}
-      data-artifact-path={artifactPath}
-    >
-      <button
-        type="button"
-        className={`flow-step${step.t === 'think' ? ' think' : ''}`}
-        data-testid="flow-step"
-        data-kind={step.t}
-        data-status={step.status}
-        aria-label={artifactPath
-          ? `在 Canvas 打开 ${artifactPath}`
-          : `在 Canvas 查看 ${step.title} Trajectory，${step.det || (running ? '运行中' : '已完成')}`}
-        onClick={onOpen}
-      >
-        <span className={`flow-step-icon ${step.status}`}><Icon name={artifactType ? fileIcon(artifactType) : trajIcon(step.t)} /></span>
-        <span className="flow-step-copy"><b>{text(step.title)}</b>{step.t !== 'think' && step.det && <small>{text(step.det)}</small>}</span>
-        <span className={`flow-step-status ${step.status}`} role="status" aria-live="polite">
-          {running ? (step.t === 'think' ? '思考中' : '运行中') : <><Icon name="check" />{step.time}</>}
-        </span>
-        <span className="flow-step-target" aria-hidden="true"><span>Canvas</span><Icon name="frame" /></span>
-      </button>
-      {thinkingText && (
-        <div className="flow-thinking" data-testid="flow-thinking" aria-label="完整 Thinking 轨迹">
-          {text(thinkingText)}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function Composer({
@@ -674,13 +867,53 @@ function Composer({
   onConfirmSteer(): void;
   onCancelSteer(): void;
 }) {
-  const { active, loading, steerQueue, openInCanvas, pendingAgentChanges, goal } = useWorkspace();
+  const {
+    active,
+    loading,
+    steerQueue,
+    openInCanvas,
+    pendingAgentChanges,
+    goal,
+    intent,
+    confirmIntent,
+    dismissIntent,
+  } = useWorkspace();
   const attachRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [intentBusy, setIntentBusy] = useState<'confirm' | 'dismiss' | null>(null);
+  const [intentError, setIntentError] = useState('');
   const liveAgent = [...active.messages].reverse().find(message => message.role === 'agent' && message.status === 'running');
   const currentStep = liveAgent?.traj?.[liveAgent.traj.length - 1];
   const agentThinking = !!loading && currentStep?.t === 'think' && currentStep.status === 'running';
   const showSteerPanel = agentThinking && (!!value.trim() || !!steerDraft);
+  const visibleIntent = intent && intent.status !== 'dismissed' && !intent.linkedGoalId ? intent : null;
+
+  const confirmCurrentIntent = async () => {
+    if (!visibleIntent) return;
+    setIntentBusy('confirm');
+    setIntentError('');
+    const replace = visibleIntent.blockedReason === 'activeGoalConflict' || !!visibleIntent.replacesGoalId;
+    const result = await confirmIntent(replace);
+    if (!result.ok) setIntentError(result.error || t('conversation.confirmFailed'));
+    setIntentBusy(null);
+  };
+
+  const dismissCurrentIntent = async () => {
+    setIntentBusy('dismiss');
+    setIntentError('');
+    const result = await dismissIntent();
+    if (!result.ok) setIntentError(result.error || t('conversation.cancelFailed'));
+    setIntentBusy(null);
+  };
+
+  const reviseCurrentIntent = () => {
+    const next = t('conversation.goalContractEdit');
+    onChange(next);
+    requestAnimationFrame(() => {
+      taRef.current?.focus();
+      taRef.current?.setSelectionRange(next.length, next.length);
+    });
+  };
 
   const attachFiles = async (files: File[]) => {
     const attached: ComposerAttachment[] = [];
@@ -702,16 +935,92 @@ function Composer({
 
   return (
     <div className={`composer-wrap${inline ? ' composer-welcome' : ''}`}>
+      {visibleIntent && (
+        <section
+          className={`intent-card ${visibleIntent.status}`}
+          data-testid="goal-contract"
+          aria-label={t('conversation.goalContract')}
+        >
+          <div className="intent-card-head">
+            <span><b>{t('conversation.goalContract')}</b><small>{t('conversation.revision', { revision: visibleIntent.revision })}</small></span>
+            <em>
+              {visibleIntent.status === 'confirmed' ? t('conversation.intentConfirmed')
+                : visibleIntent.status === 'clarifying' ? t('conversation.intentClarifying', { round: visibleIntent.clarificationRound })
+                  : visibleIntent.blockedReason === 'activeGoalConflict' ? t('conversation.intentReplace')
+                    : visibleIntent.status === 'blocked' ? t('conversation.intentBlocked')
+                      : t('conversation.intentAwaiting')}
+            </em>
+          </div>
+          <h3>{text(visibleIntent.objective)}</h3>
+          {visibleIntent.status === 'clarifying' && visibleIntent.openQuestions.length > 0 ? (
+            <ol className="intent-questions">
+              {visibleIntent.openQuestions.map(question => (
+                <li key={question.id}>
+                  {text(question.prompt)}
+                  {question.recommendation && <small>{t('conversation.recommendation', { value: question.recommendation })}</small>}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <details>
+              <summary>{t('conversation.intentDetails')}</summary>
+              <div className="intent-contract-grid">
+                <ContractItems title={t('conversation.deliverables')} items={visibleIntent.deliverables} />
+                <ContractItems title={t('conversation.acceptance')} items={visibleIntent.acceptanceCriteria} />
+                <ContractItems title={t('conversation.constraints')} items={visibleIntent.constraints} empty={t('conversation.noConstraints')} />
+                <ContractItems title={t('conversation.verification')} items={visibleIntent.verificationPlan} />
+              </div>
+            </details>
+          )}
+          {visibleIntent.blockedReason === 'activeGoalConflict' && (
+            <p className="intent-warning">{t('conversation.activeGoalConflict')}</p>
+          )}
+          {intentError && <p className="intent-error" role="alert">{text(intentError)}</p>}
+          {visibleIntent.status !== 'confirmed' ? (
+            <div className="intent-actions">
+              {(visibleIntent.status === 'awaitingConfirmation' || visibleIntent.blockedReason === 'activeGoalConflict') && (
+                <button
+                  type="button"
+                  className="intent-confirm"
+                  data-testid="goal-contract-confirm"
+                  disabled={intentBusy !== null}
+                  onClick={() => void confirmCurrentIntent()}
+                >
+                  {intentBusy === 'confirm' ? t('conversation.confirming')
+                    : visibleIntent.blockedReason === 'activeGoalConflict' ? t('conversation.confirmReplace')
+                      : t('conversation.confirmStart')}
+                </button>
+              )}
+              <button type="button" data-testid="goal-contract-revise" disabled={intentBusy !== null} onClick={reviseCurrentIntent}>{t('conversation.revise')}</button>
+              <button type="button" data-testid="goal-contract-dismiss" disabled={intentBusy !== null} onClick={() => void dismissCurrentIntent()}>
+                {intentBusy === 'dismiss' ? t('conversation.cancelling') : t('common.cancel')}
+              </button>
+            </div>
+          ) : (
+            <div className="intent-actions">
+              <button
+                type="button"
+                className="intent-confirm"
+                data-testid="goal-contract-retry"
+                disabled={intentBusy !== null || loading}
+                onClick={() => void confirmCurrentIntent()}
+              >
+                {loading ? t('conversation.creatingGoal') : intentBusy === 'confirm' ? t('conversation.retrying') : t('conversation.retryCreate')}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
       {goal && goal.status !== 'complete' && (
         <div className={`goal-status ${goal.status}`} role="status">
           <span className="goal-status-dot" />
-          <span className="goal-status-copy"><b>GOAL</b><small>{text(goal.objective)}</small></span>
-          {goal.status === 'active' && <button type="button" data-testid="goal-pause">暂停</button>}
+          <span className="goal-status-copy"><b>{term('goal')}</b><small>{text(goal.objective)}</small></span>
+          {goal.status === 'active' && <button type="button" data-testid="goal-pause">{t('conversation.goalPaused')}</button>}
         </div>
       )}
       {mentionMatches.length > 0 && (
-        <div id="composer-mention-menu" className="slash-menu" data-testid="slash-menu" role="listbox" aria-label={mentionMatches[0]?.kind === 'file' ? '工作区文件' : '本地 Skill'}>
-          <div className="slash-menu-label">{mentionMatches[0]?.kind === 'file' ? '工作区文件' : '命令'}<span>↑↓ 选择 · Enter 插入</span></div>
+        <div id="composer-mention-menu" className="slash-menu" data-testid="slash-menu" role="listbox" aria-label={mentionMatches[0]?.kind === 'file' ? t('files.tree') : t('top.localSkills')}>
+          <div className="slash-menu-label">{mentionMatches[0]?.kind === 'file' ? t('files.tree') : t('conversation.commands')}<span>{t('conversation.suggestionInsert')}</span></div>
           {mentionMatches.map((it, index) => (
             <button
               key={it.kind + it.id}
@@ -726,7 +1035,7 @@ function Composer({
             >
               <span className="slash-ico"><Icon name={it.icon} /></span>
               <span className="slash-copy"><span className="slash-name">{it.kind === 'file' ? it.name : (it.command || `/${it.name}`)}</span>{it.desc && <span className="slash-desc">{it.desc}</span>}</span>
-              <span className="slash-kind">{it.kind === 'skill' ? '本地' : it.desc}</span>
+              <span className="slash-kind">{it.kind === 'skill' ? t('conversation.local') : it.desc}</span>
             </button>
           ))}
         </div>
@@ -738,23 +1047,23 @@ function Composer({
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
         onDrop={(event) => { event.preventDefault(); setDragging(false); void attachFiles(Array.from(event.dataTransfer.files)); }}
       >
-        {dragging && <div className="composer-drop" data-testid="composer-drop"><Icon name="paperclip" />松开以加入工作区并引用</div>}
+        {dragging && <div className="composer-drop" data-testid="composer-drop"><FileUploadIcon />{t('conversation.dropReference')}</div>}
         {showSteerPanel && (
           <div className="steer-panel" data-testid="steer-panel" role="status">
             <span className="steer-title"><Icon name="send" />STEER</span>
-            <span className="steer-help">Enter 仅暂存 · 确认后插入队列 · 连按 Enter 立即中断并切换上下文</span>
+            <span className="steer-help">{t('conversation.steerHint')}</span>
             {steerQueue.length > 0 && (
               <div className="steer-queue" data-testid="steer-queue">
-                {steerQueue.map(item => <span key={item.id}><b>待插入</b>{text(item.text)}</span>)}
+                {steerQueue.map(item => <span key={item.id}><b>{t('conversation.queued')}</b>{text(item.text)}</span>)}
               </div>
             )}
           </div>
         )}
         {steerDraft && (
           <div className="steer-draft" data-testid="steer-draft" role="status">
-            <span className="steer-draft-copy"><b>STEER 待确认</b><small>{text(steerDraft)}</small></span>
-            <button type="button" className="steer-draft-confirm" data-testid="steer-confirm" onClick={onConfirmSteer}>确认插入</button>
-            <button type="button" className="steer-draft-cancel" data-testid="steer-cancel" aria-label="取消待确认指令" onClick={onCancelSteer}><Icon name="x" /></button>
+            <span className="steer-draft-copy"><b>{t('conversation.steerPending')}</b><small>{text(steerDraft)}</small></span>
+            <button type="button" className="steer-draft-confirm" data-testid="steer-confirm" onClick={onConfirmSteer}>{t('conversation.confirmInsert')}</button>
+            <button type="button" className="steer-draft-cancel" data-testid="steer-cancel" aria-label={t('conversation.cancelPending')} onClick={onCancelSteer}><Icon name="x" /></button>
           </div>
         )}
         <input
@@ -770,29 +1079,29 @@ function Composer({
           }}
         />
         {attachments.length > 0 && (
-          <div className="composer-attachments" data-testid="composer-attachments" aria-label="已附加文件">
+          <div className="composer-attachments" data-testid="composer-attachments" aria-label={t('conversation.attachedFiles')}>
             {attachments.map(attachment => (
               <div className="composer-attachment" data-testid="composer-attachment" key={attachment.id}>
-                <button type="button" className="composer-attachment-open" title={`在 Canvas 打开 ${attachment.path}`} onClick={() => void openInCanvas(attachment.path)}>
+                <button type="button" className="composer-attachment-open" title={t('conversation.openAttachment', { path: attachment.path })} onClick={() => void openInCanvas(attachment.path)}>
                   <span className="composer-attachment-icon"><Icon name={fileIcon(attachment.type)} /></span>
-                  <span className="composer-attachment-copy"><b>{text(attachment.name)}</b><small>已加入工作区</small></span>
+                  <span className="composer-attachment-copy"><b>{text(attachment.name)}</b><small>{t('conversation.addedToWorkspace')}</small></span>
                 </button>
-                <button type="button" className="composer-attachment-remove" data-testid="composer-attachment-remove" title={`移除 ${attachment.name}`} aria-label={`移除 ${attachment.name}`} onClick={() => onRemoveAttachment(attachment.id)}><Icon name="x" /></button>
+                <button type="button" className="composer-attachment-remove" data-testid="composer-attachment-remove" title={t('conversation.removeAttachment', { name: attachment.name })} aria-label={t('conversation.removeAttachment', { name: attachment.name })} onClick={() => onRemoveAttachment(attachment.id)}><Icon name="x" /></button>
               </div>
             ))}
           </div>
         )}
       {pendingAgentChanges.length > 0 && (
           <div className="composer-agent-context" data-testid="composer-agent-context" role="status">
-            <span><Icon name="edit" /><b>Agent 将了解 Canvas 修改</b></span>
-            <small>{pendingAgentChanges.map(change => change.path).join('、')} · 随下一条消息同步</small>
+            <span><Icon name="edit" /><b>{t('conversation.canvasChangesKnown')}</b></span>
+            <small>{t('conversation.syncedNextMessage', { paths: pendingAgentChanges.map(change => change.path).join(', ') })}</small>
           </div>
       )}
         <textarea
           data-testid="composer-input"
           className={loading ? 'steer-input' : undefined}
           ref={taRef}
-          placeholder={loading ? '输入后按 Enter 插入当前 Agent loop…' : '描述任务；输入 / 使用本地 Skill，输入 @ 引用文件…'}
+          placeholder={loading ? t('conversation.steerPlaceholder') : t('conversation.taskPlaceholder')}
           rows={1}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -801,18 +1110,28 @@ function Composer({
           aria-activedescendant={mentionMatches.length ? `mention-option-${mentionIndex}` : undefined}
         />
         <div className="composer-tools">
-          <button className="pill" data-testid="composer-attach" onClick={() => attachRef.current?.click()}><Icon name="paperclip" />附件</button>
+          <button className="pill" data-testid="composer-attach" onClick={() => attachRef.current?.click()}><FileUploadIcon />{t('conversation.attach')}</button>
           <button
-            className="pill"
+            type="button"
+            className={`pill goal-pill${goal || /^\/goal(?:\s|$)/i.test(value) ? ' on active' : ''}`}
             data-testid="goal-toggle"
-            aria-pressed={goal?.status === 'active'}
-            onClick={() => onChange(value.startsWith('/goal') ? value : '/goal ')}
+            aria-pressed={goal !== null || /^\/goal(?:\s|$)/i.test(value)}
+            onClick={() => {
+              const next = /^\/goal(?:\s|$)/i.test(value)
+                ? value.replace(/^\/goal\s*/i, '')
+                : `/goal ${value}`;
+              onChange(next);
+              requestAnimationFrame(() => {
+                taRef.current?.focus();
+                taRef.current?.setSelectionRange(next.length, next.length);
+              });
+            }}
           >
-            Goal
+            <Icon name="target" />{term('goal')}
           </button>
 
           <span className="spacer" />
-          <button className={`send${loading ? ' steering' : ''}`} data-testid="composer-send" aria-label={loading ? '暂存 Agent 指令' : '发送消息'} disabled={!value.trim()} onClick={onSend}>
+          <button className={`send${loading ? ' steering' : ''}`} data-testid="composer-send" aria-label={loading ? t('conversation.queueInstruction') : t('conversation.send')} disabled={!value.trim()} onClick={onSend}>
             <Icon name="send" />
           </button>
         </div>
@@ -821,12 +1140,23 @@ function Composer({
   );
 }
 
+function ContractItems({ title, items, empty = t('common.none') }: { title: string; items: string[]; empty?: string }) {
+  return (
+    <div>
+      <b>{title}</b>
+      {items.length ? <ul>{items.map((item, index) => <li key={`${title}-${index}`}>{text(item)}</li>)}</ul> : <small>{empty}</small>}
+    </div>
+  );
+}
+
 function EmptyState({ composer }: { composer: React.ReactNode }) {
+  const aida = readBrand(document.documentElement) === 'aida';
   return (
     <div className="empty" style={{ height: '100%' }}>
-      <div className="empty-pi-banner"><PiIcon /></div>
-      <h2>开始一个新的 Agent 任务</h2>
-      <p>由 Pi 驱动。告诉它你想做什么，它会调用工具、把成果写进右侧工作区。</p>
+      <div className="empty-welcome-lockup">
+        <div className="empty-pi-banner" aria-hidden="true"><PiIcon /></div>
+        <h2>{t(aida ? 'conversation.newTaskAida' : 'conversation.newTask')}</h2>
+      </div>
       {composer}
     </div>
   );

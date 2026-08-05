@@ -1,20 +1,109 @@
 import { expect, test } from '@playwright/test';
 import { demoSnapshot, emptySnapshot, emitAgentEvent, fixtureWorkspaceRoot, installMockAgent } from '../fixtures/agent';
 
+const configuredBrand = ['pi', 'aida'].includes((process.env.PI_UI_BRAND || '').toLowerCase())
+  ? process.env.PI_UI_BRAND!.toLowerCase()
+  : process.env.PI_UI_THEME?.toLowerCase() === 'aida' ? 'aida' : 'pi';
+
 test('opens the root route as an unbound welcome page', async ({ page }) => {
   await installMockAgent(page, { snapshot: emptySnapshot, startAtWelcome: true });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { name: '开始一个新的 Agent 任务' })).toBeVisible();
+  await expect(page.getByRole('heading', {
+    name: configuredBrand === 'aida' ? 'AIDA Cooks. You Look busy' : 'Pi Cooks. You Look busy',
+  })).toBeVisible();
   await expect(page.getByTestId('agent-message')).toHaveCount(0);
+});
+
+test('uses the AIDA welcome line only for an AIDA-branded integration', async ({ page }) => {
+  await installMockAgent(page, { snapshot: emptySnapshot, startAtWelcome: true });
+  await page.route('**/', async route => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace('data-brand="pi"', 'data-brand="aida"');
+    await route.fulfill({ response, body });
+  });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByRole('heading', { name: 'AIDA Cooks. You Look busy' })).toBeVisible();
+});
+
+test('keeps the first prompt while a welcome Session becomes active', async ({ page }) => {
+  const created = {
+    ...emptySnapshot,
+    sessionId: 'created-session',
+    session: { ...emptySnapshot.session, id: 'created-session' },
+  };
+  let snapshotRequests = 0;
+  await installMockAgent(page, { snapshot: emptySnapshot, startAtWelcome: true });
+  await page.route('**/api/session/new', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ ok: true, session: created.session }),
+  }));
+  await page.route(/\/api\/session\?id=/, async route => {
+    snapshotRequests += 1;
+    if (snapshotRequests > 1) await new Promise(resolve => setTimeout(resolve, 120));
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(created) });
+  });
+  await page.route('**/api/prompt', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: '{"ok":true}',
+  }));
+
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('composer-input').fill('保留第一条输入');
+  await page.getByTestId('composer-input').press('Enter');
+
+  await expect(page).toHaveURL(/\/sessions\/created-session$/);
+  await expect(page.getByTestId('user-message')).toContainText('保留第一条输入');
+  await expect(page.getByTestId('agent-message')).toHaveCount(1);
+  await emitAgentEvent(page, { type: 'goal_updated', goal: null }, 'created-session');
+  await expect(page.getByTestId('agent-running-status')).toBeVisible();
+  await emitAgentEvent(page, { type: 'text_delta', delta: '开始流式输出' }, 'created-session');
+  await expect(page.getByTestId('agent-answer')).toContainText('开始流式输出');
+  await expect.poll(() => snapshotRequests).toBe(1);
+});
+
+test('stays on the Session index until the selected conversation is ready', async ({ page }) => {
+  const first = {
+    ...emptySnapshot,
+    sessionId: 'session-a',
+    session: { ...emptySnapshot.session, id: 'session-a', title: 'Session A' },
+    messages: [{ role: 'user' as const, text: '旧对话内容', when: '刚刚' }],
+  };
+  const second = {
+    ...emptySnapshot,
+    sessionId: 'session-b',
+    session: { ...emptySnapshot.session, id: 'session-b', title: 'Session B' },
+    messages: [{ role: 'user' as const, text: '目标对话内容', when: '刚刚' }],
+  };
+  await installMockAgent(page, { snapshot: first, sessions: [first.session, second.session] });
+  await page.route(/\/api\/session\?id=/, async route => {
+    const id = new URL(route.request().url()).searchParams.get('id');
+    if (id === 'session-b') await new Promise(resolve => setTimeout(resolve, 120));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(id === 'session-b' ? second : first),
+    });
+  });
+
+  await page.goto('/sessions/session-a', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('session-switcher').click();
+  await page.getByTestId('session-item').filter({ hasText: 'Session B' }).click();
+
+  await expect(page.getByTestId('session-list')).toBeVisible();
+  await expect(page).toHaveURL(/\/sessions\/session-b$/);
+  await expect(page.getByTestId('user-message')).toContainText('目标对话内容');
 });
 
 test('opens an existing session at the end of its transcript', async ({ page }) => {
   const snapshot = structuredClone(demoSnapshot);
   snapshot.messages = Array.from({ length: 6 }, () => structuredClone(demoSnapshot.messages)).flat();
   await installMockAgent(page, { snapshot });
-  await page.setViewportSize({ width: 1100, height: 480 });
+  await page.setViewportSize({ width: 1440, height: 480 });
   await page.goto('/sessions/demo', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('agent-message')).toHaveCount(6);
 
@@ -125,6 +214,37 @@ test('shows a session index without account or upgrade UI', async ({ page }) => 
   await expect(page.locator('body')).not.toContainText(/Jing Yang|免费版|升级 Pro/);
 });
 
+test('permanently deletes an idle Session after an explicit inline confirmation', async ({ page }) => {
+  const active = {
+    ...emptySnapshot,
+    sessionId: 'session-keep',
+    session: { ...emptySnapshot.session, id: 'session-keep', title: '保留会话' },
+  };
+  const disposable = {
+    ...emptySnapshot.session,
+    id: 'session-delete',
+    title: '待删除会话',
+  };
+  await installMockAgent(page, { snapshot: active, sessions: [active.session, disposable] });
+  await page.goto('/sessions/session-keep', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('session-switcher').click();
+
+  const target = page.getByTestId('session-item').filter({ hasText: '待删除会话' });
+  await target.hover();
+  await target.getByTestId('session-delete').click();
+  await expect(target.getByRole('alertdialog')).toContainText('Permanently delete “待删除会话”?');
+
+  const response = page.waitForResponse(value =>
+    value.request().method() === 'DELETE' && value.url().includes('/api/session?id=session-delete')
+  );
+  await target.getByTestId('session-delete-confirm').click();
+  await response;
+
+  await expect(page.getByTestId('session-item')).toHaveCount(1);
+  await expect(page.getByTestId('session-list')).not.toContainText('待删除会话');
+  await expect(page).toHaveURL(/\/sessions\/session-keep$/);
+});
+
 test('toggles full-page destinations without modal overlays or mixed views', async ({ page }) => {
   await installMockAgent(page, { snapshot: emptySnapshot });
   await page.route('**/api/models', route => route.fulfill({
@@ -195,7 +315,7 @@ test('isolates the session list when the Workspace root switches', async ({ page
   await emitAgentEvent(page, {
     type: 'session_snapshot',
     session: { id: 'new-workspace-session', title: '新目录会话', group: '今天', time: '2026-07-28 10:00', live: false, status: 'idle' },
-    messages: [], steers: [], goal: null, thinking: false,
+    messages: [], steers: [], goal: null, intent: null, thinking: false,
     cwd: `${fixtureWorkspaceRoot}-b/session`, files: [], reason: 'cwd',
   });
 

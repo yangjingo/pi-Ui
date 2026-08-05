@@ -110,6 +110,7 @@ export const emptySnapshot: SessionSnapshot = {
   messages: [],
   steers: [],
   goal: null,
+  intent: null,
   thinking: false,
   cwd: `${fixtureWorkspaceRoot}/test`,
   files: [],
@@ -126,6 +127,7 @@ export const demoSnapshot: SessionSnapshot = {
 
 interface MockAgentOptions {
   snapshot?: SessionSnapshot;
+  snapshots?: Record<string, SessionSnapshot>;
   skills?: unknown[];
   sessions?: SessionSummary[];
   health?: Record<string, unknown>;
@@ -134,6 +136,7 @@ interface MockAgentOptions {
 
 export async function installMockAgent(page: Page, options: MockAgentOptions = {}) {
   const snapshot = options.snapshot ?? emptySnapshot;
+  let sessions = [...(options.sessions ?? [snapshot.session])];
   await page.addInitScript(({ initialEvent, startAtWelcome }) => {
     if (!startAtWelcome && window.location.pathname === '/') {
       window.history.replaceState({}, '', `/sessions/${encodeURIComponent(initialEvent.sessionId)}`);
@@ -197,21 +200,42 @@ export async function installMockAgent(page: Page, options: MockAgentOptions = {
       ...options.health,
     }),
   }));
-  await page.route('**/api/skills', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify(options.skills ?? []),
-  }));
+  await page.route('**/api/skills**', route => {
+    const id = new URL(route.request().url()).searchParams.get('id');
+    const skills = options.skills ?? [];
+    const body = id ? skills.find((skill: any) => skill.id === id) : skills;
+    return route.fulfill({
+      status: body ? 200 : 404,
+      contentType: 'application/json',
+      body: JSON.stringify(body || { error: 'Skill 不存在' }),
+    });
+  });
   await page.route('**/api/sessions', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify(options.sessions ?? [snapshot.session]),
+    body: JSON.stringify(sessions),
   }));
-  await page.route(/\/api\/session\?id=/, route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify(snapshot),
-  }));
+  await page.route(/\/api\/session\?id=/, async route => {
+    const request = route.request();
+    if (request.method() === 'DELETE') {
+      const id = new URL(request.url()).searchParams.get('id') || '';
+      const exists = sessions.some(session => session.id === id);
+      if (exists) sessions = sessions.filter(session => session.id !== id);
+      await route.fulfill({
+        status: exists ? 200 : 404,
+        contentType: 'application/json',
+        body: JSON.stringify(exists ? { ok: true } : { ok: false, error: '会话不存在' }),
+      });
+      return;
+    }
+    const id = new URL(request.url()).searchParams.get('id') || '';
+    const requestedSnapshot = options.snapshots?.[id] ?? snapshot;
+    await route.fulfill({
+      status: requestedSnapshot ? 200 : 404,
+      contentType: 'application/json',
+      body: JSON.stringify(requestedSnapshot || { error: '会话不存在' }),
+    });
+  });
 }
 
 export async function emitAgentEvent(page: Page, event: AgentEventPayload, sessionId?: string) {

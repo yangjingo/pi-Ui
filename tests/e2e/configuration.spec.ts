@@ -54,13 +54,24 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('opens model configuration in the shared master/Canvas workbench', async ({ page }) => {
+  let modelListReads = 0;
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (request.method() === 'GET' && url.pathname === '/api/models') modelListReads += 1;
+  });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('model-center').hover();
   await page.getByTestId('model-center').click();
   await expect(page.getByTestId('model-master')).toBeVisible();
   await expect(page.getByTestId('config-canvas')).toBeVisible();
   await expect(page.getByTestId('model-option')).toHaveCount(1);
+  await expect.poll(() => modelListReads).toBe(1);
+  const configViewport = page.getByTestId('config-canvas-viewport');
+  const viewportPadding = await configViewport.evaluate(element => Number.parseFloat(getComputedStyle(element).paddingLeft));
+  expect(viewportPadding).toBeGreaterThanOrEqual(18);
+  await expect(configViewport.locator('.config-detail-card').first()).toHaveCSS('border-left-width', '0px');
   const master = page.getByTestId('model-master').locator('.model-workbench-master');
-  const entries = master.locator('.config-entry-list');
+  const entries = master.locator('.config-entry-list').last();
   const [masterBox, entriesBox] = await Promise.all([master.boundingBox(), entries.boundingBox()]);
   expect(masterBox).not.toBeNull();
   expect(entriesBox).not.toBeNull();
@@ -74,6 +85,44 @@ test('opens model configuration in the shared master/Canvas workbench', async ({
   await page.getByTestId('cm-apikey').fill('test-key');
   await page.getByTestId('cm-modelid').fill('local-model');
   await expect(page.getByTestId('cm-save')).toBeEnabled();
+});
+
+test('keeps configuration in the same two-column desktop model under browser zoom', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 320 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('model-center').click();
+  await expect(page.getByTestId('model-master')).toBeVisible();
+  await expect(page.getByTestId('config-canvas')).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const app = document.querySelector<HTMLElement>('.config-page-workbench');
+    const master = document.querySelector<HTMLElement>('[data-testid="model-master"]');
+    const canvas = document.querySelector<HTMLElement>('[data-testid="config-canvas"]');
+    const tabs = canvas?.querySelector<HTMLElement>('.config-workbench-tabs');
+    const viewport = canvas?.querySelector<HTMLElement>('[data-testid="config-canvas-viewport"]');
+    if (!app || !master || !canvas || !tabs || !viewport) return null;
+    return {
+      viewport: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      pageWidth: document.documentElement.scrollWidth,
+      pageHeight: document.documentElement.scrollHeight,
+      app: app.getBoundingClientRect(),
+      master: master.getBoundingClientRect(),
+      canvas: canvas.getBoundingClientRect(),
+      tabs: tabs.getBoundingClientRect(),
+      content: viewport.getBoundingClientRect(),
+    };
+  });
+  expect(layout).not.toBeNull();
+  expect(layout!.pageWidth).toBeLessThanOrEqual(layout!.viewport + 1);
+  expect(layout!.master.width).toBeGreaterThanOrEqual(240);
+  expect(layout!.canvas.width).toBeGreaterThan(0);
+  expect(layout!.master.right).toBeLessThanOrEqual(layout!.canvas.left + 1);
+  expect(layout!.canvas.right).toBeLessThanOrEqual(layout!.app.right + 1);
+  expect(layout!.pageHeight).toBeLessThanOrEqual(layout!.viewportHeight + 1);
+  expect(layout!.tabs.height).toBeLessThan(60);
+  expect(layout!.content.height).toBeGreaterThan(80);
+  expect(layout!.content.bottom).toBeLessThanOrEqual(layout!.app.bottom + 1);
 });
 
 test('shows the Workspace root instead of the active session directory', async ({ page }, testInfo) => {
@@ -112,8 +161,8 @@ test('lists models.json and protected auth.json under the configuration root', a
   await expect(page.getByTestId('model-config-auth-file')).toContainText('auth.json');
   await page.getByTestId('model-config-auth-file').click();
 
-  await expect(page.getByTestId('model-config-auth-protected')).toContainText('凭据由 Core 保护');
-  await expect(page.getByTestId('model-config-auth-protected')).toContainText('内容不会发送到浏览器');
+  await expect(page.getByTestId('model-config-auth-protected')).toContainText('Credentials protected by Core');
+  await expect(page.getByTestId('model-config-auth-protected')).toContainText('content never reaches the browser');
   await expect(page.getByTestId('model-config-json')).toHaveCount(0);
   await expect(page.getByTestId('model-config-file')).toContainText('.workspace/.agentcore/auth.json');
 });
@@ -157,7 +206,7 @@ test('edits a Core-declared model directly from the UI', async ({ page }) => {
   await page.getByTestId('model-center').click();
   await page.getByTestId('model-option').click();
   await expect(page.getByTestId('model-detail-apikey')).toHaveValue('');
-  await expect(page.getByTestId('model-detail-apikey')).toHaveAttribute('placeholder', /留空不修改/);
+  await expect(page.getByTestId('model-detail-apikey')).toHaveAttribute('placeholder', 'Stored securely by Core; leave blank to keep it');
 
   await page.getByTestId('model-detail-label').fill('Renamed Model');
   await page.getByTestId('model-detail-baseurl').fill('https://renamed.example.invalid/v1');

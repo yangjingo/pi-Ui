@@ -2,28 +2,39 @@ import { useEffect, useRef, useState } from 'react';
 import type * as React from 'react';
 
 export const DEFAULT_WORKSPACE_WIDTH = 860;
+export const DEFAULT_WORKSPACE_WIDTH_RATIO = 0.5;
 export const MIN_WORKSPACE_WIDTH = 360;
 const MAX_WORKSPACE_WIDTH = 1400;
 const MIN_CONVERSATION_WIDTH = 420;
+const MAX_WORKSPACE_VIEWPORT_SHARE = 0.65;
 
 export function useWorkspaceWidth() {
   const [dragging, setDragging] = useState(false);
   const [workspaceWidth, setWorkspaceWidth] = useState(DEFAULT_WORKSPACE_WIDTH);
   const widthRef = useRef(DEFAULT_WORKSPACE_WIDTH);
-  const desiredWidthRef = useRef(DEFAULT_WORKSPACE_WIDTH);
+  const preferredWidthRef = useRef<number | null>(null);
   const resizePointerRef = useRef<number | null>(null);
 
-  const maxWorkspaceWidth = () => window.innerWidth > 1180
-    ? Math.max(MIN_WORKSPACE_WIDTH, Math.min(MAX_WORKSPACE_WIDTH, window.innerWidth - MIN_CONVERSATION_WIDTH))
-    : MAX_WORKSPACE_WIDTH;
+  const minWorkspaceWidth = () => Math.min(
+    MIN_WORKSPACE_WIDTH,
+    Math.floor(window.innerWidth * MAX_WORKSPACE_VIEWPORT_SHARE),
+  );
+  const minConversationWidth = () => Math.min(
+    MIN_CONVERSATION_WIDTH,
+    Math.ceil(window.innerWidth * (1 - MAX_WORKSPACE_VIEWPORT_SHARE)),
+  );
+  const maxWorkspaceWidth = () => Math.max(
+    minWorkspaceWidth(),
+    Math.min(MAX_WORKSPACE_WIDTH, window.innerWidth - minConversationWidth()),
+  );
 
   const applyWorkspaceWidth = (raw: number, persist = false, announce = false) => {
-    const next = Math.round(Math.max(MIN_WORKSPACE_WIDTH, Math.min(maxWorkspaceWidth(), raw)));
+    const next = Math.round(Math.max(minWorkspaceWidth(), Math.min(maxWorkspaceWidth(), raw)));
     widthRef.current = next;
     (document.querySelector('.app') as HTMLElement | null)?.style.setProperty('--ws-w', `${next}px`);
     if (announce) setWorkspaceWidth(next);
     if (persist) {
-      desiredWidthRef.current = next;
+      preferredWidthRef.current = next;
       window.localStorage.setItem('pi.workspace.width', String(next));
     }
     return next;
@@ -31,9 +42,12 @@ export function useWorkspaceWidth() {
 
   useEffect(() => {
     const saved = Number(window.localStorage.getItem('pi.workspace.width'));
-    if (Number.isFinite(saved) && saved >= MIN_WORKSPACE_WIDTH && saved <= MAX_WORKSPACE_WIDTH) desiredWidthRef.current = saved;
-    applyWorkspaceWidth(desiredWidthRef.current, false, true);
-    const onWindowResize = () => applyWorkspaceWidth(desiredWidthRef.current, false, true);
+    preferredWidthRef.current = Number.isFinite(saved) && saved >= MIN_WORKSPACE_WIDTH && saved <= MAX_WORKSPACE_WIDTH
+      ? saved
+      : null;
+    const defaultWidth = () => Math.round(window.innerWidth * DEFAULT_WORKSPACE_WIDTH_RATIO);
+    applyWorkspaceWidth(preferredWidthRef.current ?? defaultWidth(), false, true);
+    const onWindowResize = () => applyWorkspaceWidth(preferredWidthRef.current ?? defaultWidth(), false, true);
     window.addEventListener('resize', onWindowResize);
     return () => window.removeEventListener('resize', onWindowResize);
   }, []);
@@ -59,7 +73,7 @@ export function useWorkspaceWidth() {
     if (resizePointerRef.current !== event.pointerId) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     resizePointerRef.current = null;
-    desiredWidthRef.current = widthRef.current;
+    preferredWidthRef.current = widthRef.current;
     window.localStorage.setItem('pi.workspace.width', String(widthRef.current));
     setWorkspaceWidth(widthRef.current);
     setDragging(false);
@@ -70,14 +84,25 @@ export function useWorkspaceWidth() {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     const step = event.shiftKey ? 80 : 24;
-    const next = event.key === 'Home' ? DEFAULT_WORKSPACE_WIDTH
-      : event.key === 'End' ? maxWorkspaceWidth()
-        : widthRef.current + (event.key === 'ArrowLeft' ? step : -step);
+    if (event.key === 'Home') {
+      preferredWidthRef.current = null;
+      window.localStorage.removeItem('pi.workspace.width');
+      applyWorkspaceWidth(window.innerWidth * DEFAULT_WORKSPACE_WIDTH_RATIO, false, true);
+      return;
+    }
+    const next = event.key === 'End' ? maxWorkspaceWidth()
+      : widthRef.current + (event.key === 'ArrowLeft' ? step : -step);
     applyWorkspaceWidth(next, true, true);
   };
 
+  const resetWorkspaceWidth = () => {
+    preferredWidthRef.current = null;
+    window.localStorage.removeItem('pi.workspace.width');
+    return applyWorkspaceWidth(window.innerWidth * DEFAULT_WORKSPACE_WIDTH_RATIO, false, true);
+  };
+
   return {
-    dragging, workspaceWidth, maxWorkspaceWidth, beginResize, moveResize, finishResize, resizeWithKeyboard,
-    resetWorkspaceWidth: () => applyWorkspaceWidth(DEFAULT_WORKSPACE_WIDTH, true, true),
+    dragging, workspaceWidth, minWorkspaceWidth, maxWorkspaceWidth, beginResize, moveResize, finishResize, resizeWithKeyboard,
+    resetWorkspaceWidth,
   };
 }

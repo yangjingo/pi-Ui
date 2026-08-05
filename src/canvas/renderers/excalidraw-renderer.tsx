@@ -1,4 +1,5 @@
 import { memo, useId, useMemo } from 'react';
+import { t } from '../../ui';
 
 export const EXCALIDRAW_PREPARE_MEASURE = 'pi:excalidraw:prepare';
 
@@ -229,17 +230,17 @@ export const ExcalidrawRenderer = memo(function ExcalidrawRenderer({ name, sourc
   if (!scene || !scene.visibleElements) {
     const preview = source.slice(0, 20_000);
     return (
-      <div className="r-excalidraw-error" data-testid="renderer-excalidraw-error">
-        <b>无法渲染 Excalidraw 场景</b>
-        <span>请确认文件包含 Excalidraw 的 <code>elements</code> 数据。</span>
-        {preview && <pre><code>{preview}{source.length > preview.length ? '\n…（内容已截断）' : ''}</code></pre>}
+      <div className="r-excalidraw-error" data-testid="renderer-excalidraw-error" role="alert">
+        <b>{t('renderer.excalidrawFailed')}</b>
+        <span>{t('renderer.excalidrawHint')}</span>
+        {preview && <pre><code>{preview}{source.length > preview.length ? `\n${t('renderer.truncated')}` : ''}</code></pre>}
       </div>
     );
   }
 
   return (
     <div className="r-excalidraw" data-testid="renderer-excalidraw">
-      <svg viewBox={scene.viewBox} role="img" aria-label={`${name} Excalidraw 预览`} preserveAspectRatio="xMidYMid meet">
+      <svg viewBox={scene.viewBox} role="img" aria-label={t('renderer.excalidrawPreview', { name })} preserveAspectRatio="xMidYMid meet">
         <defs>
           <marker id={markerId} markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto" markerUnits="strokeWidth">
             <path d="M 0 0 L 8 4.5 L 0 9 z" fill="context-stroke" />
