@@ -16,6 +16,9 @@ piUi install
 `piUi install` 会在当前目录创建 `.workspace/`、启动 UI 和 Core API，并自动打开
 `http://127.0.0.1:4173`。按 `Ctrl+C` 停止。
 
+服务只允许监听 `127.0.0.1`、`localhost` 或 `::1`，且浏览器 API 请求必须同源。Pi UI
+不提供未经认证的局域网或公网监听模式。
+
 不想全局安装时：
 
 ```bash
@@ -40,6 +43,18 @@ piUi --version
 ```
 
 免全局安装时，将 `piUi` 替换为 `npx --yes @whyj/pi-ui@latest`。
+
+UI 外观在服务启动时配置，无需重新打包：
+
+```powershell
+$env:PI_UI_THEME = 'aida'      # dark（默认）、zengrid 或 aida
+$env:PI_UI_LANGUAGE = 'zh-CN'  # en（默认）或 zh-CN
+$env:PI_UI_BRAND = 'aida'      # 可选：pi 或 aida；显式覆盖欢迎页署名
+piUi start
+```
+
+主题、语言与品牌不写入浏览器 localStorage，顶栏也不提供切换按钮。`aida` 是完整浅色主题；
+选择它且未设置 `PI_UI_BRAND` 时，欢迎页自动使用 AIDA 署名。显式品牌值始终优先。
 
 ## 核心能力
 
@@ -86,6 +101,5 @@ npm whoami
 npm publish --access public
 ```
 
-架构说明见
-[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) 和
-[`docs/SOURCE-MODULE-DESIGN.md`](./docs/SOURCE-MODULE-DESIGN.md)。
+架构、源码模块边界与模型/上下文配置说明统一见
+[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)。

@@ -1,5 +1,13 @@
 # 从“当前会话”到 Session Runtime：Pi UI 后台 Agent Flow 的架构取舍
 
+> 状态：已实现并于 2026-08-04 复核。本文是 Session Runtime 隔离的唯一 Goal；`ARCHITECTURE.md` 只保留
+> 当前架构摘要和到本文件的引用，不再复制一份 Session 隔离目标。
+
+Skill package 与依赖环境不是 Session Runtime 的私有文件：Skill roots 是 Workspace 级只读
+资源，fingerprint 环境是 Workspace 级可复用资源；每个 Runtime 只保存本轮 active Skill ID
+和获准环境 roots，开始新 Turn 时清空。这个边界的唯一合同见
+[GOAL-SKILL-FILE-HARNESS.md](./GOAL-SKILL-FILE-HARNESS.md)，不在本文复制权限矩阵。
+
 一个聊天界面很容易产生一种错觉：系统永远只有“当前会话”。用户看到哪个会话，服务端就运行哪个会话。对普通问答这套模型勉强成立，但当 Agent Flow 能执行数分钟、操作文件并在后台完成时，“当前会话”就成了错误的抽象。
 
 Pi UI 原先在 Node 进程里维护一个全局 `activeSessionId` 和一个 Pi session。浏览器连接 SSE 后会收到这份“当前状态”；切换会话则会释放旧实例、修改工作目录。结果是：新 Tab 会被正在运行的 Flow 接管，一个 Tab 的切换会影响另一个 Tab，离开会话甚至意味着后台任务被终止。
@@ -8,7 +16,7 @@ Pi UI 原先在 Node 进程里维护一个全局 `activeSessionId` 和一个 Pi 
 
 > 前端正在看什么，是浏览器 Tab 的导航状态；Agent 正在做什么，是 Session Runtime 的执行状态。两者不能共享一个“当前会话”。
 
-![全局当前会话与 Session Runtime 的架构对比](figs/session-runtime-comparison.svg)
+![全局当前会话与 Session Runtime 的架构对比](../figs/session-runtime-comparison.svg)
 
 ## 取舍一：服务端不再拥有“当前 Session”
 
@@ -44,14 +52,27 @@ Pi UI 原先在 Node 进程里维护一个全局 `activeSessionId` 和一个 Pi 
 
 ## 边界比功能更重要
 
-![Pi UI 多 Session 后台运行全局架构](figs/session-runtime-architecture.svg)
+![Pi UI 多 Session 后台运行全局架构](../figs/session-runtime-architecture.svg)
 
 实现仍遵守五模块方向：`core/pi` 管 Runtime，`core/agent` 管协议和 reducer，`workspace` 管 Tab 选择与业务状态，`canvas` 负责渲染，`ui` 只提供视觉 primitive。浏览器不能导入 Pi SDK，Canvas 也不能绕过 Workspace 直接调用 Core。
 
-这套设计没有解决 Node 进程退出后的任务续跑、后台 Runtime 数量上限、运行中 Session 的删除策略和真正的多用户协作。这些问题需要调度、租约和资源治理，不能借 Session 隔离之名顺手塞进首期实现。
+这套设计没有解决 Node 进程退出后的任务续跑、后台 Runtime 数量上限和真正的多用户协作。
+运行中 Session 的删除不再是未决策略：当前合同明确拒绝删除非空闲 Session；只有 Runtime
+空闲且 Core 完成直属目录与 realpath 边界校验后才允许永久删除。支持强制删除运行中
+Session 仍属于非目标，因为它需要额外的取消、租约和恢复协议。
 
 ## 如何证明边界真的成立
 
 这类改造不能只测“页面能打开”。Core 测试同时启动两个 Runtime，确认它们保留各自的 cwd 和执行实例；Workspace 测试把事件投递给 A，断言 B 的 reducer 记录完全不变；重连测试要求浏览器逐个恢复已知 Session，而不是接受一份全局快照。E2E 则使用两个真实 Page 分别绑定 A、B，覆盖根欢迎态、后台完成提醒、查看后清除提醒，以及历史会话恢复到末尾。测试关注的是“错误不能跨越边界”，而不只是快乐路径上的 DOM 文案。
 
 最终得到的不是一个“更复杂的聊天页”，而是一个更诚实的模型：Session 是执行和持久化边界，Tab 是观察和导航边界。只要守住这条线，后台 Agent Flow、多窗口和后续调度能力才有可靠的地基。
+
+## 2026-08-04 审计结论
+
+- Core 的 runtime map、显式 `sessionId` 命令/事件、按 Session reducer 与 URL 投影均有模块或
+  E2E 证据；多 Tab、未读同步、历史恢复和删除边界已覆盖。
+- 未读使用 workspace-scoped `localStorage` 与 `storage` event 同步，这是浏览器观察状态，
+  没有回流成服务端 Runtime 状态。
+- Node 进程退出后的续跑、Runtime 淘汰策略和多用户协作仍是非目标；不提前引入 job queue、
+  lease 或分布式协调层。
+- 当前统一测试数量与其证据边界见 [Goals 审计索引](./README.md)，本文不保存会快速过期的计数。
