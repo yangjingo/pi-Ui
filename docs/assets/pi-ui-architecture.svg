@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
+  <title id="title">Pi UI architecture</title>
+  <desc id="desc">A local-first five-module architecture. Canvas consumes Workspace, Workspace consumes the browser-safe Core agent gateway, and Node Core owns Harness, Pi SDK, credentials, and local workspace data.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#949494"/>
+    </marker>
+    <style>
+      .bg { fill: #171717; }
+      .surface { fill: #202020; stroke: #343434; stroke-width: 2; }
+      .sunken { fill: #121212; stroke: #343434; stroke-width: 2; }
+      .boundary { fill: none; stroke: #565656; stroke-width: 2; stroke-dasharray: 9 9; }
+      .title { fill: #e5e5e5; font: 500 34px 'DM Sans', 'Segoe UI', sans-serif; }
+      .eyebrow { fill: #949494; font: 600 15px 'Fira Code', Consolas, monospace; letter-spacing: 2px; }
+      .label { fill: #e5e5e5; font: 500 23px 'DM Sans', 'Segoe UI', sans-serif; }
+      .copy { fill: #b8b8b8; font: 400 16px 'DM Sans', 'Segoe UI', sans-serif; }
+      .mono { fill: #949494; font: 500 14px 'Fira Code', Consolas, monospace; }
+      .arrow { fill: none; stroke: #949494; stroke-width: 2.5; marker-end: url(#arrow); }
+      .quiet { fill: none; stroke: #565656; stroke-width: 2; marker-end: url(#arrow); }
+      .status { fill: #65a30d; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1400" height="820"/>
+
+  <g transform="translate(64 54)">
+    <g transform="translate(0 0) scale(.075)">
+      <path fill="#e5e5e5" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/>
+      <path fill="#e5e5e5" d="M517.36 400H634.72V634.72H517.36Z"/>
+    </g>
+    <text class="title" x="72" y="42">Pi UI architecture</text>
+    <text class="copy" x="72" y="70">One minimal interface. Five explicit reasons to change.</text>
+  </g>
+
+  <rect class="boundary" x="64" y="150" width="1272" height="264" rx="8"/>
+  <text class="eyebrow" x="88" y="184">BROWSER · NO PI SDK · NO CREDENTIALS</text>
+
+  <g transform="translate(88 218)">
+    <rect class="surface" width="278" height="152" rx="5"/>
+    <text class="label" x="24" y="42">Canvas</text>
+    <text class="copy" x="24" y="77">Panels · renderers · workbench</text>
+    <text class="mono" x="24" y="116">Conversation ↔ Artifact</text>
+  </g>
+
+  <g transform="translate(444 218)">
+    <rect class="surface" width="278" height="152" rx="5"/>
+    <text class="label" x="24" y="42">Workspace</text>
+    <text class="copy" x="24" y="77">Files · models · Skills · Sessions</text>
+    <text class="mono" x="24" y="116">browser application state</text>
+  </g>
+
+  <g transform="translate(800 218)">
+    <rect class="surface" width="278" height="152" rx="5"/>
+    <text class="label" x="24" y="42">Core / agent</text>
+    <text class="copy" x="24" y="77">Runtime-neutral gateway</text>
+    <text class="mono" x="24" y="116">protocol · SSE store</text>
+  </g>
+
+  <g transform="translate(1142 230)">
+    <rect class="sunken" width="160" height="128" rx="5"/>
+    <text class="label" x="22" y="42">UI</text>
+    <text class="copy" x="22" y="74">tokens</text>
+    <text class="copy" x="22" y="99">theme · locale</text>
+  </g>
+
+  <path class="arrow" d="M 366 294 H 432"/>
+  <path class="arrow" d="M 722 294 H 788"/>
+  <path class="quiet" d="M 1142 294 H 1092"/>
+
+  <g transform="translate(448 442)">
+    <rect class="sunken" width="504" height="58" rx="4"/>
+    <circle class="status" cx="29" cy="29" r="5"/>
+    <text class="mono" x="50" y="35">/api/* + SSE · loopback host · same-origin</text>
+  </g>
+  <path class="arrow" d="M 939 370 V 430"/>
+  <path class="arrow" d="M 700 500 V 548"/>
+
+  <rect class="boundary" x="64" y="534" width="1272" height="222" rx="8"/>
+  <text class="eyebrow" x="88" y="568">NODE + LOCAL RUNTIME · TRUST BOUNDARY</text>
+
+  <g transform="translate(536 586)">
+    <rect class="surface" width="328" height="72" rx="5"/>
+    <text class="label" x="24" y="31">Core / Pi runtime</text>
+    <text class="copy" x="24" y="56">Agent loop · transport · policy</text>
+  </g>
+
+  <path class="arrow" d="M 700 658 V 673 H 248 V 684"/>
+  <path class="arrow" d="M 700 658 V 684"/>
+  <path class="arrow" d="M 700 658 V 673 H 1065 V 684"/>
+
+  <g transform="translate(88 692)">
+    <rect class="surface" width="320" height="48" rx="5"/>
+    <text class="label" x="18" y="31">Harness</text>
+    <text class="copy" x="128" y="30">Context · File · Goal · Skill</text>
+  </g>
+
+  <g transform="translate(540 692)">
+    <rect class="surface" width="320" height="48" rx="5"/>
+    <text class="label" x="18" y="31">Pi SDK</text>
+    <text class="copy" x="112" y="30">models · tools</text>
+  </g>
+
+  <g transform="translate(905 692)">
+    <rect class="surface" width="320" height="48" rx="5"/>
+    <text class="label" x="18" y="31">.workspace</text>
+    <text class="copy" x="160" y="30">private local data</text>
+  </g>
+
+  <text class="mono" x="64" y="796">canvas → workspace → core/agent</text>
+  <text class="mono" x="1336" y="796" text-anchor="end">one npm package · local-first by design</text>
+</svg>

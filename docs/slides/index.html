@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23171717'/%3E%3Cpath fill='%23e5e5e5' d='M6 6h14v9h-5v5h-5v5H6zm5 5v4h4v-4zm9 4h5v10h-5z'/%3E%3C/svg%3E" />
+  <title>Pi UI — Minimal interface. Serious agent work.</title>
+  <style>
+    :root {
+      --surface-base: #171717;
+      --surface-raised: #202020;
+      --surface-sunken: #121212;
+      --content-primary: #e5e5e5;
+      --content-secondary: #b8b8b8;
+      --content-tertiary: #949494;
+      --border: #343434;
+      --border-strong: #565656;
+      --success: #65a30d;
+      --ease-out: cubic-bezier(.22, 1, .36, 1);
+      --deck-width: 1600px;
+      --deck-height: 900px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #0d0d0d;
+      color: var(--content-primary);
+      font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+    }
+
+    button,
+    a { font: inherit; }
+
+    a {
+      color: inherit;
+      text-decoration-color: var(--border-strong);
+      text-underline-offset: 5px;
+      transition: color 160ms var(--ease-out), text-decoration-color 160ms var(--ease-out);
+    }
+
+    a:hover,
+    a:focus-visible {
+      color: var(--content-primary);
+      text-decoration-color: var(--content-primary);
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--content-primary);
+      outline-offset: 4px;
+    }
+
+    .viewport {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    .deck {
+      position: relative;
+      width: var(--deck-width);
+      height: var(--deck-height);
+      overflow: hidden;
+      background: var(--surface-base);
+      transform-origin: center;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 28px;
+      padding: 48px 68px 42px;
+      opacity: 0;
+      transform: translateY(7px);
+      pointer-events: none;
+      transition: opacity 180ms var(--ease-out), transform 220ms var(--ease-out);
+    }
+
+    .slide.present {
+      z-index: 2;
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .slide-head,
+    .slide-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .slide-head {
+      min-height: 38px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-lockup,
+    .eyebrow,
+    .page,
+    .mono,
+    .source-link,
+    .chip,
+    code,
+    pre {
+      font-family: "Fira Code", "Cascadia Code", Consolas, monospace;
+    }
+
+    .brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--content-tertiary);
+      font-size: 15px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .pi-mark {
+      width: 28px;
+      height: 28px;
+      color: var(--content-primary);
+      flex: none;
+    }
+
+    .page {
+      color: var(--content-tertiary);
+      font-size: 15px;
+      letter-spacing: .08em;
+    }
+
+    .slide-body {
+      min-height: 0;
+      display: grid;
+      align-content: center;
+      gap: 28px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p { margin: 0; }
+
+    h1,
+    h2 {
+      font-family: Raleway, "Segoe UI", system-ui, sans-serif;
+      font-weight: 300;
+      letter-spacing: -.035em;
+      line-height: 1.06;
+    }
+
+    h1 { font-size: 76px; }
+    h2 { max-width: 1250px; font-size: 56px; }
+
+    h3 {
+      font-size: 26px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .lede {
+      max-width: 980px;
+      color: var(--content-secondary);
+      font-size: 25px;
+      line-height: 1.5;
+    }
+
+    .quiet {
+      color: var(--content-tertiary);
+      font-size: 19px;
+      line-height: 1.55;
+    }
+
+    .eyebrow {
+      color: var(--content-tertiary);
+      font-size: 15px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .slide-foot {
+      min-height: 24px;
+      color: var(--content-tertiary);
+      font-size: 14px;
+    }
+
+    .source-link {
+      font-size: 13px;
+      letter-spacing: .04em;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+      gap: 46px;
+      align-items: center;
+      min-height: 0;
+    }
+
+    .split.equal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .split.wide-left { grid-template-columns: minmax(0, 1.35fr) minmax(0, .85fr); }
+
+    .stack {
+      display: grid;
+      align-content: center;
+      gap: 24px;
+      min-width: 0;
+    }
+
+    .media-frame {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-sunken);
+    }
+
+    .media-frame img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .media-caption {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 16px 18px;
+      border-top: 1px solid var(--border);
+      color: var(--content-tertiary);
+      font-size: 14px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 13px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-sunken);
+      color: var(--content-secondary);
+      font-size: 13px;
+      letter-spacing: .06em;
+    }
+
+    .chip.status {
+      border-color: var(--success);
+      background: var(--success);
+      color: white;
+    }
+
+    .panel,
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-raised);
+    }
+
+    .panel { padding: 30px; }
+
+    .card {
+      display: grid;
+      align-content: start;
+      gap: 20px;
+      min-height: 190px;
+      padding: 28px;
+    }
+
+    .card-number {
+      color: var(--content-tertiary);
+      font-family: "Fira Code", Consolas, monospace;
+      font-size: 27px;
+    }
+
+    .card p {
+      color: var(--content-secondary);
+      font-size: 18px;
+      line-height: 1.5;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+    }
+
+    .flow {
+      display: grid;
+      gap: 12px;
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: 52px 160px 1fr;
+      gap: 18px;
+      align-items: center;
+      min-height: 62px;
+      padding: 10px 18px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-sunken);
+    }
+
+    .flow-row.active { border-color: var(--border-strong); background: var(--surface-raised); }
+
+    .flow-index {
+      color: var(--content-tertiary);
+      font-family: "Fira Code", Consolas, monospace;
+      font-size: 15px;
+    }
+
+    .flow-row.active .flow-index { color: var(--success); }
+
+    .flow-row strong { font-size: 20px; }
+    .flow-row span:last-child { color: var(--content-tertiary); font-size: 16px; }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 28px;
+    }
+
+    .compare-column {
+      min-height: 400px;
+      padding: 34px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-sunken);
+    }
+
+    .compare-column.raised { border-color: var(--border-strong); background: var(--surface-raised); }
+
+    .compare-column h3 { margin: 20px 0 28px; font-size: 34px; font-weight: 400; }
+
+    .clean-list {
+      display: grid;
+      gap: 24px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .clean-list li {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 16px;
+      color: var(--content-secondary);
+      font-size: 21px;
+      line-height: 1.45;
+    }
+
+    .clean-list li::before { content: "—"; color: var(--content-tertiary); }
+    .compare-column.raised .clean-list li::before { content: "+"; color: var(--success); }
+
+    .terminal {
+      padding: 30px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--surface-sunken);
+    }
+
+    .terminal pre {
+      margin: 24px 0;
+      color: var(--content-primary);
+      font-size: 23px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--content-secondary);
+      font-size: 18px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      flex: none;
+    }
+
+    .architecture {
+      display: grid;
+      place-items: center;
+      height: 100%;
+    }
+
+    .architecture img {
+      display: block;
+      max-width: 100%;
+      max-height: 650px;
+    }
+
+    .cover .slide-head,
+    .cover .slide-foot { border: 0; }
+
+    .cover .slide-body { align-content: stretch; }
+
+    .cover-copy h1 { max-width: 590px; }
+    .cover-copy .lede { max-width: 610px; }
+
+    .closing-statement {
+      max-width: 760px;
+      font-family: Raleway, "Segoe UI", system-ui, sans-serif;
+      font-size: 70px;
+      font-weight: 300;
+      letter-spacing: -.04em;
+      line-height: 1.08;
+    }
+
+    .module-map {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .module-map a {
+      display: grid;
+      gap: 8px;
+      min-height: 90px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-sunken);
+      text-decoration: none;
+    }
+
+    .module-map strong { font-size: 18px; }
+    .module-map span { color: var(--content-tertiary); font-size: 14px; line-height: 1.4; }
+
+    .controls {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: rgba(18, 18, 18, .92);
+    }
+
+    .controls button {
+      width: 38px;
+      height: 34px;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      background: transparent;
+      color: var(--content-secondary);
+      cursor: pointer;
+      transition: color 160ms var(--ease-out), background 160ms var(--ease-out), transform 120ms var(--ease-out);
+    }
+
+    .controls button:hover { background: var(--surface-raised); color: var(--content-primary); }
+    .controls button:active { transform: scale(.97); }
+    .controls button:disabled { opacity: .35; cursor: default; }
+
+    .control-count {
+      min-width: 68px;
+      color: var(--content-tertiary);
+      font-family: "Fira Code", Consolas, monospace;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .progress {
+      position: fixed;
+      inset: auto 0 0;
+      z-index: 9;
+      height: 2px;
+      background: var(--surface-sunken);
+    }
+
+    .progress > span {
+      display: block;
+      width: 10%;
+      height: 100%;
+      background: var(--content-tertiary);
+      transform-origin: left;
+      transition: width 180ms var(--ease-out);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide,
+      .progress > span,
+      .controls button,
+      a { transition-duration: 0ms; }
+    }
+
+    @media print {
+      html,
+      body { overflow: visible; background: white; }
+      .viewport { position: static; display: block; }
+      .deck { width: 1600px; height: auto; transform: none !important; }
+      .slide { position: relative; width: 1600px; height: 900px; opacity: 1; transform: none; page-break-after: always; }
+      .controls,
+      .progress { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="viewport">
+    <main class="deck" id="deck" aria-label="Pi UI product presentation">
+      <section class="slide cover present" id="slide-01" aria-labelledby="title-01">
+        <header class="slide-head">
+          <div class="brand-lockup">
+            <svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>
+            Pi UI
+          </div>
+          <span class="page">01 / 10</span>
+        </header>
+        <div class="slide-body split">
+          <div class="stack cover-copy">
+            <p class="eyebrow">Local-first agent workspace</p>
+            <h1 id="title-01">Minimal interface.<br />Serious agent work.</h1>
+            <p class="lede">What if your business could redefine the experience without weakening the runtime boundary?</p>
+            <div class="chips">
+              <span class="chip status">LOCAL-FIRST</span>
+              <span class="chip">FIVE MODULES</span>
+              <span class="chip">ONE PACKAGE</span>
+            </div>
+          </div>
+          <figure class="media-frame">
+            <img src="../assets/readme/conversation-canvas.gif" alt="Conversation opening an artifact and a raw trajectory step in Canvas" />
+            <figcaption class="media-caption">
+              <span>Conversation ↔ Canvas</span>
+              <a href="../../README.md">Open README</a>
+            </figcaption>
+          </figure>
+        </div>
+        <footer class="slide-foot">
+          <span>Pi Cooks. You Look busy.</span>
+          <a class="source-link" href="https://github.com/yangjingo/pi-Ui" target="_blank" rel="noopener">github.com/yangjingo/pi-Ui</a>
+        </footer>
+      </section>
+
+      <section class="slide" id="slide-02" aria-labelledby="title-02" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Positioning</div>
+          <span class="page">02 / 10</span>
+        </header>
+        <div class="slide-body">
+          <div class="stack">
+            <p class="eyebrow">Stable contract · adaptable surface</p>
+            <h2 id="title-02">What stays minimal while the business changes?</h2>
+          </div>
+          <div class="card-grid">
+            <article class="card">
+              <span class="card-number">01</span>
+              <h3>Visual contract</h3>
+              <p>Semantic tokens, shared behavior, and one accessibility baseline across every theme.</p>
+            </article>
+            <article class="card">
+              <span class="card-number">02</span>
+              <h3>Agent boundary</h3>
+              <p>The browser uses <code>core/agent</code>. Pi SDK, credentials, and files remain in Node.</p>
+            </article>
+            <article class="card">
+              <span class="card-number">03</span>
+              <h3>Capability pipeline</h3>
+              <p>Harnesses evolve and Skills accumulate without skipping authorization or validation.</p>
+            </article>
+          </div>
+          <div class="chips">
+            <span class="chip">THEME</span><span class="chip">LOCALE</span><span class="chip">HARNESS</span><span class="chip">SKILLS</span>
+          </div>
+        </div>
+        <footer class="slide-foot"><span>Business-defined surface → runtime-preserved contract</span><a class="source-link" href="../DESIGN.md">Source: DESIGN.md</a></footer>
+      </section>
+
+      <section class="slide" id="slide-03" aria-labelledby="title-03" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Workflow</div>
+          <span class="page">03 / 10</span>
+        </header>
+        <div class="slide-body split wide-left">
+          <div class="stack">
+            <p class="eyebrow">Explicit linkage</p>
+            <h2 id="title-03">How does one click keep both sides in context?</h2>
+            <p class="lede">Conversation follows the run. Canvas inspects the evidence. Neither side steals focus from the other.</p>
+            <div class="flow">
+              <div class="flow-row"><span class="flow-index">01</span><strong>Follow</strong><span>Compact trajectory in Conversation</span></div>
+              <div class="flow-row active"><span class="flow-index">02</span><strong>Open</strong><span>Artifact enters a balanced split</span></div>
+              <div class="flow-row"><span class="flow-index">03</span><strong>Inspect</strong><span>Raw step input/output replaces Canvas content</span></div>
+            </div>
+          </div>
+          <figure class="media-frame">
+            <img src="../assets/readme/conversation-canvas.gif" alt="Click-driven linkage between Conversation and Canvas" />
+            <figcaption class="media-caption"><span>Every Canvas change has a user action</span><a href="../UX.md">Interaction contract</a></figcaption>
+          </figure>
+        </div>
+        <footer class="slide-foot"><span>No implicit synchronization.</span><a class="source-link" href="../UX.md#3-direct-manipulation--leftright-linkage">Source: UX.md</a></footer>
+      </section>
+
+      <section class="slide" id="slide-04" aria-labelledby="title-04" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Harness</div>
+          <span class="page">04 / 10</span>
+        </header>
+        <div class="slide-body split equal">
+          <div class="stack">
+            <p class="eyebrow">Align → authorize → audit</p>
+            <h2 id="title-04">Why does Harness ask for a contract first?</h2>
+            <div class="flow">
+              <div class="flow-row"><span class="flow-index">01</span><strong>Intent</strong><span>Recognize explicit Goal work</span></div>
+              <div class="flow-row"><span class="flow-index">02</span><strong>Contract</strong><span>Persist D / AC / C / N / V</span></div>
+              <div class="flow-row active"><span class="flow-index">03</span><strong>Confirm</strong><span>Lock ID + revision + hash</span></div>
+              <div class="flow-row"><span class="flow-index">04</span><strong>Audit</strong><span>Verify every completion claim</span></div>
+            </div>
+          </div>
+          <figure class="media-frame">
+            <img src="../assets/readme/goal-harness.gif" alt="Goal Contract expanding and awaiting exact confirmation" />
+            <figcaption class="media-caption"><span>Context · File · Goal · Skill</span><a href="../ARCHITECTURE.md#goal-slash-skill--path">Harness contract</a></figcaption>
+          </figure>
+        </div>
+        <footer class="slide-foot"><span>Execution begins only after the agreed revision is confirmed.</span><a class="source-link" href="../ARCHITECTURE.md">Source: ARCHITECTURE.md</a></footer>
+      </section>
+
+      <section class="slide" id="slide-05" aria-labelledby="title-05" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Canvas linkage</div>
+          <span class="page">05 / 10</span>
+        </header>
+        <div class="slide-body">
+          <div class="stack">
+            <p class="eyebrow">One task chain · two responsibilities</p>
+            <h2 id="title-05">Where does the raw evidence live?</h2>
+          </div>
+          <div class="compare">
+            <article class="compare-column">
+              <p class="eyebrow">Conversation</p>
+              <h3>Follow the run</h3>
+              <ul class="clean-list">
+                <li>Compact, readable trajectory</li>
+                <li>Final result remains primary</li>
+                <li>Secondary actions stay behind one entry</li>
+              </ul>
+            </article>
+            <article class="compare-column raised">
+              <p class="eyebrow">Canvas</p>
+              <h3>Inspect the evidence</h3>
+              <ul class="clean-list">
+                <li>Raw Tool input and output</li>
+                <li>Artifact-native renderers</li>
+                <li>Explicit fullscreen focus and editing</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+        <footer class="slide-foot"><span>Follow on the left. Inspect on the right.</span><a class="source-link" href="../UX.md#2-one-focus-per-surface">Source: UX.md</a></footer>
+      </section>
+
+      <section class="slide" id="slide-06" aria-labelledby="title-06" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Skill Hub</div>
+          <span class="page">06 / 10</span>
+        </header>
+        <div class="slide-body split wide-left">
+          <figure class="media-frame">
+            <img src="../assets/readme/skill-hub.gif" alt="Local Skill Hub catalog and file editor" />
+            <figcaption class="media-caption"><span>Workspace-local capability</span><a href="../ARCHITECTURE.md#goal-slash-skill--path">Skill lifecycle</a></figcaption>
+          </figure>
+          <div class="stack">
+            <p class="eyebrow">Reusable without bypassing trust</p>
+            <h2 id="title-06">How does a great turn become a trusted Skill?</h2>
+            <div class="flow">
+              <div class="flow-row"><span class="flow-index">01</span><strong>Turn</strong><span>Index completed work</span></div>
+              <div class="flow-row"><span class="flow-index">02</span><strong>Draft</strong><span>Keep candidate in Session</span></div>
+              <div class="flow-row"><span class="flow-index">03</span><strong>Validate</strong><span>Run explicit @SKILL.md turn</span></div>
+              <div class="flow-row active"><span class="flow-index">04</span><strong>Package</strong><span>Confirm name, then install</span></div>
+            </div>
+          </div>
+        </div>
+        <footer class="slide-foot"><span>No auto-publish · no remote browser endpoint</span><a class="source-link" href="../ARCHITECTURE.md">Source: ARCHITECTURE.md</a></footer>
+      </section>
+
+      <section class="slide" id="slide-07" aria-labelledby="title-07" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Architecture</div>
+          <span class="page">07 / 10</span>
+        </header>
+        <div class="slide-body">
+          <div class="stack">
+            <p class="eyebrow">One trust boundary</p>
+            <h2 id="title-07">What is allowed to cross from browser to Node?</h2>
+          </div>
+          <a class="architecture" href="../assets/pi-ui-architecture.svg" aria-label="Open the Pi UI architecture diagram">
+            <img src="../assets/pi-ui-architecture.svg" alt="Pi UI five-module browser and Node architecture" />
+          </a>
+        </div>
+        <footer class="slide-foot"><span>canvas → workspace → core/agent · core/pi → harness</span><a class="source-link" href="../ARCHITECTURE.md#source-module-contract">Source module contract</a></footer>
+      </section>
+
+      <section class="slide" id="slide-08" aria-labelledby="title-08" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Design restraint</div>
+          <span class="page">08 / 10</span>
+        </header>
+        <div class="slide-body">
+          <div class="stack">
+            <p class="eyebrow">Progressive disclosure</p>
+            <h2 id="title-08">What does restraint remove from the default view?</h2>
+          </div>
+          <div class="compare">
+            <article class="compare-column">
+              <p class="eyebrow">Shown now</p>
+              <h3>The working surface</h3>
+              <ul class="clean-list">
+                <li>Final answer and compact trajectory</li>
+                <li>Composer as the persistent action</li>
+                <li>Focus, borders, spacing, and state</li>
+              </ul>
+            </article>
+            <article class="compare-column raised">
+              <p class="eyebrow">On demand</p>
+              <h3>The deeper evidence</h3>
+              <ul class="clean-list">
+                <li>Workspace, drawers, and fullscreen</li>
+                <li>Raw Tools, diagnostics, and metrics</li>
+                <li>Skill contribution and naming</li>
+              </ul>
+            </article>
+          </div>
+          <p class="quiet mono">Desktop-only · explicit linkage · no decorative shadow · ordinary feedback &lt; 300ms</p>
+        </div>
+        <footer class="slide-foot"><span>The user chooses the depth.</span><a class="source-link" href="../UX.md#1--progressive-disclosure-primary-principle">Source: UX.md</a></footer>
+      </section>
+
+      <section class="slide" id="slide-09" aria-labelledby="title-09" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Ship</div>
+          <span class="page">09 / 10</span>
+        </header>
+        <div class="slide-body split equal">
+          <div class="stack">
+            <p class="eyebrow">Quickstart</p>
+            <h2 id="title-09">Can one-command deployment remain safe by default?</h2>
+            <div class="terminal">
+              <span class="eyebrow">Terminal</span>
+              <pre><code>$ cd /path/to/your-project
+$ npx --yes @whyj/pi-ui@latest install</code></pre>
+              <p class="status-line"><span class="status-dot"></span>Create .workspace · start UI + Core · open 127.0.0.1:4173</p>
+            </div>
+          </div>
+          <div class="stack">
+            <p class="eyebrow">One npm package</p>
+            <div class="module-map">
+              <a href="../../dist/"><strong>dist/</strong><span>Browser UI</span></a>
+              <a href="../../dist-node/"><strong>dist-node/</strong><span>Core · Harness · runtime</span></a>
+              <a href="../../bin/pi-ui.js"><strong>bin/</strong><span>Thin CLI entry</span></a>
+            </div>
+            <div class="panel stack">
+              <p class="status-line"><span class="status-dot"></span><strong>Loopback + same-origin</strong></p>
+              <p class="lede" style="font-size: 20px">No remote authentication boundary means no <code>0.0.0.0</code>, LAN, or public host.</p>
+            </div>
+            <div class="chips"><span class="chip status">dark</span><span class="chip">zengrid</span><span class="chip">aida</span></div>
+          </div>
+        </div>
+        <footer class="slide-foot"><span>Theme, locale, and brand are injected at startup.</span><a class="source-link" href="../../README.md#running-in-two-minutes">Quickstart source</a></footer>
+      </section>
+
+      <section class="slide" id="slide-10" aria-labelledby="title-10" aria-hidden="true" inert>
+        <header class="slide-head">
+          <div class="brand-lockup"><svg class="pi-mark" viewBox="0 0 800 800" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>Integrate</div>
+          <span class="page">10 / 10</span>
+        </header>
+        <div class="slide-body split">
+          <div class="stack">
+            <p class="eyebrow">Start with the surface. Keep the boundary.</p>
+            <h2 id="title-10">What should your product redefine first?</h2>
+            <p class="closing-statement">Pi Cooks.<br />You Look busy.</p>
+            <p class="lede">Bring your theme, locale, Harness, and Skills. Leave the trust model intact.</p>
+          </div>
+          <div class="stack">
+            <div class="module-map">
+              <a href="../DESIGN.md"><strong>Theme + locale</strong><span>Define the product expression</span></a>
+              <a href="../ARCHITECTURE.md"><strong>Harness + Skills</strong><span>Define reusable constraints</span></a>
+              <a href="../../README.md"><strong>Install Pi UI</strong><span>Start in the target project</span></a>
+            </div>
+            <div class="terminal">
+              <span class="eyebrow">Start here</span>
+              <pre><code>npx --yes @whyj/pi-ui@latest install</code></pre>
+            </div>
+          </div>
+        </div>
+        <footer class="slide-foot"><span>Minimal interface. Serious agent work.</span><a class="source-link" href="https://github.com/yangjingo/pi-Ui" target="_blank" rel="noopener">Open repository</a></footer>
+      </section>
+    </main>
+  </div>
+
+  <nav class="controls" aria-label="Slide navigation">
+    <button id="prev" type="button" aria-label="Previous slide" title="Previous slide (←)">←</button>
+    <span class="control-count" id="count" aria-hidden="true">01 / 10</span>
+    <button id="next" type="button" aria-label="Next slide" title="Next slide (→ / Space)">→</button>
+  </nav>
+  <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+  <p class="sr-only" id="announcer" aria-live="polite">Slide 1 of 10</p>
+
+  <script>
+    (() => {
+      const width = 1600;
+      const height = 900;
+      const deck = document.getElementById('deck');
+      const slides = Array.from(document.querySelectorAll('.slide'));
+      const previousButton = document.getElementById('prev');
+      const nextButton = document.getElementById('next');
+      const count = document.getElementById('count');
+      const progress = document.getElementById('progress');
+      const announcer = document.getElementById('announcer');
+      let index = Math.max(0, Math.min(slides.length - 1, Number(location.hash.replace('#slide-', '')) - 1 || 0));
+
+      function resize() {
+        const scale = Math.min(window.innerWidth / width, window.innerHeight / height);
+        deck.style.transform = `scale(${scale})`;
+      }
+
+      function render(nextIndex, updateHash = true) {
+        index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+        slides.forEach((slide, slideIndex) => {
+          const active = slideIndex === index;
+          slide.classList.toggle('present', active);
+          slide.setAttribute('aria-hidden', String(!active));
+          slide.inert = !active;
+        });
+        const display = String(index + 1).padStart(2, '0');
+        count.textContent = `${display} / ${slides.length}`;
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        previousButton.disabled = index === 0;
+        nextButton.disabled = index === slides.length - 1;
+        announcer.textContent = `Slide ${index + 1} of ${slides.length}: ${slides[index].querySelector('h1, h2')?.textContent || ''}`;
+        if (updateHash) history.replaceState(null, '', `#slide-${display}`);
+      }
+
+      function isInteractive(target) {
+        return target instanceof Element && Boolean(target.closest('a, button, input, textarea, select'));
+      }
+
+      window.addEventListener('resize', resize);
+      window.addEventListener('hashchange', () => {
+        const requested = Number(location.hash.replace('#slide-', '')) - 1;
+        if (Number.isFinite(requested)) render(requested, false);
+      });
+      document.addEventListener('keydown', event => {
+        if (isInteractive(event.target) && event.key === ' ') return;
+        if (['ArrowRight', 'PageDown', ' '].includes(event.key)) {
+          event.preventDefault();
+          render(index + 1);
+        } else if (['ArrowLeft', 'PageUp'].includes(event.key)) {
+          event.preventDefault();
+          render(index - 1);
+        } else if (event.key === 'Home' || event.key.toLowerCase() === 'r') {
+          event.preventDefault();
+          render(0);
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          render(slides.length - 1);
+        }
+      });
+      previousButton.addEventListener('click', () => render(index - 1));
+      nextButton.addEventListener('click', () => render(index + 1));
+
+      resize();
+      render(index, false);
+    })();
+  </script>
+</body>
+</html>
