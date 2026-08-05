@@ -20,11 +20,14 @@ export interface FileNode {
 export interface TrajStep {
   id?: string;      // stable tool-call id; absent for synthetic reasoning steps
   t: string;        // step kind, mapped to an icon: search|read|write|canvas|plan|sheet|query|analyze|code|think
+  shell?: 'bash' | 'powershell';
+  outputEncoding?: 'utf-8' | 'normalized' | 'lossy';
   title: string;
   det: string;
   in?: string;
   out?: string;
   status: 'done' | 'running';
+  error?: boolean;
   time: string;
   file?: string;
   text?: string;    // full reasoning text for 'think' steps (det holds a one-line preview)
@@ -69,6 +72,70 @@ export interface LongRunningGoal {
   usage: { tokensUsed: number; activeSeconds: number };
   createdAt: number;
   updatedAt: number;
+}
+
+export type IntentStatus =
+  | 'assessing'
+  | 'clarifying'
+  | 'awaitingConfirmation'
+  | 'confirmed'
+  | 'dismissed'
+  | 'blocked';
+
+export interface IntentQuestion {
+  id: string;
+  prompt: string;
+  required: boolean;
+  recommendation?: string;
+}
+
+export interface IntentDraft {
+  intentId: string;
+  sessionId: string;
+  sourceTurnId: string;
+  status: IntentStatus;
+  clarificationRound: number;
+  objective: string;
+  deliverables: string[];
+  acceptanceCriteria: string[];
+  constraints: string[];
+  nonGoals: string[];
+  verificationPlan: string[];
+  assumptions: string[];
+  openQuestions: IntentQuestion[];
+  revision: number;
+  contractHash?: string;
+  linkedGoalId?: string;
+  confirmationError?: string;
+  blockedReason?: 'clarificationLimit' | 'activeGoalConflict';
+  replacesGoalId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface GoalContractInput {
+  objective: string;
+  deliverables: string[];
+  acceptanceCriteria: string[];
+  constraints: string[];
+  nonGoals: string[];
+  verificationPlan: string[];
+  assumptions?: string[];
+}
+
+export interface GoalEvidence {
+  kind: string;
+  ref: string;
+}
+
+export interface GoalCompletionAudit {
+  goalId: string;
+  contractHash: string;
+  requirements: Array<{
+    criterionId: string;
+    status: 'verified' | 'missing' | 'unverified';
+    evidence: GoalEvidence[];
+  }>;
 }
 
 export interface TurnStats {

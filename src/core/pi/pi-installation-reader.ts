@@ -19,6 +19,8 @@ import type {
   SessionSummary,
   TrajStep,
 } from '../agent/protocol';
+import { mapPiTool } from '../agent/protocol';
+import { classifyShellCommand, normalizeShellText } from './shell-output';
 
 const MAX_IMPORTED_TRANSCRIPT_CHARS = 4 * 1024 * 1024;
 const MAX_TOOL_OUTPUT_CHARS = 4 * 1024;
@@ -209,8 +211,16 @@ function truncate(value: string, max = MAX_TOOL_OUTPUT_CHARS): string {
   return value.length > max ? `${value.slice(0, max)}\n…` : value;
 }
 
-function toolResultText(message: any): string {
-  return truncate(textOfContent(message?.content) || (message?.isError ? '执行失败' : '完成'));
+function truncateToolOutput(value: string, max = MAX_TOOL_OUTPUT_CHARS): string {
+  if (value.length <= max) return value;
+  const omitted = '…\n';
+  return `${omitted}${value.slice(-(max - omitted.length))}`;
+}
+
+function toolResultText(message: any): ReturnType<typeof normalizeShellText> {
+  return normalizeShellText(truncateToolOutput(
+    textOfContent(message?.content) || (message?.isError ? '执行失败' : '完成'),
+  ));
 }
 
 /**
@@ -305,12 +315,19 @@ export function projectPiSessionEntries(entries: SessionEntry[]): Message[] {
           blocks.push({ kind: 'step', step: steps.length - 1 });
         } else if (part?.type === 'toolCall') {
           const id = String(part.id || '');
+          const toolName = String(part.name || 'tool');
+          const shell = toolName === 'bash' || toolName === 'powershell'
+            ? classifyShellCommand(part.arguments?.command, toolName)
+            : undefined;
           const step: TrajStep = {
             id: id || undefined,
-            t: String(part.name || 'tool'),
-            title: String(part.name || '工具'),
+            t: mapPiTool(toolName),
+            ...(shell ? { shell } : {}),
+            title: toolName,
             det: truncate(JSON.stringify(part.arguments || {}), 240),
-            in: truncate(JSON.stringify(part.arguments || {})),
+            in: shell
+              ? normalizeShellText(part.arguments?.command || '').text
+              : truncate(JSON.stringify(part.arguments || {})),
             status: 'done',
             time: target.when || '',
           };
@@ -325,18 +342,26 @@ export function projectPiSessionEntries(entries: SessionEntry[]): Message[] {
 
     if (source?.role === 'toolResult') {
       const step = toolSteps.get(String(source.toolCallId || ''));
-      if (step) step.out = toolResultText(source);
+      if (step) {
+        const output = toolResultText(source);
+        step.out = output.text;
+        if (step.shell) step.outputEncoding = output.encoding;
+      }
       continue;
     }
 
     if (source?.role === 'bashExecution') {
       const target = ensureAgent(timeOf(source.timestamp || entry.timestamp));
+      const input = normalizeShellText(source.command || '');
+      const output = normalizeShellText(truncate(String(source.output || '')));
       const step: TrajStep = {
         t: 'code',
+        shell: classifyShellCommand(input.text),
+        outputEncoding: output.encoding,
         title: '执行命令',
-        det: truncate(String(source.command || ''), 240),
-        in: truncate(String(source.command || '')),
-        out: truncate(String(source.output || '')),
+        det: truncate(input.text, 240),
+        in: truncate(input.text),
+        out: output.text,
         status: 'done',
         time: target.when || '',
       };

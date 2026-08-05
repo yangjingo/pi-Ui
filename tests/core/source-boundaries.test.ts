@@ -182,7 +182,7 @@ test('root entries and browser-safe File Harness stay isolated', () => {
     .sort();
 
   assert.deepEqual(rootImports('main.tsx'), ['app', 'ui/styles']);
-  assert.deepEqual(rootImports('app.tsx'), ['canvas', 'canvas', 'canvas', 'canvas', 'workspace']);
+  assert.deepEqual(rootImports('app.tsx'), ['canvas', 'ui', 'workspace']);
 
   const entry = resolve(sourceRoot, 'harness', 'file', 'index.ts');
   const visited = new Set<string>();

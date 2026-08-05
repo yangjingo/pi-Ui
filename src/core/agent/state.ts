@@ -1,5 +1,5 @@
 import type { AgentEvent } from './contracts';
-import type { AgentContentBlock, FileNode, LongRunningGoal, Message, SessionSummary, SteerItem, TrajStep } from './types';
+import type { AgentContentBlock, FileNode, IntentDraft, LongRunningGoal, Message, SessionSummary, SteerItem, TrajStep } from './types';
 
 export interface StreamingTurn {
   text: string;
@@ -27,6 +27,7 @@ export interface AgentState {
   connectionStatus: 'connecting' | 'connected' | 'reconnecting';
   steerQueue: SteerItem[];
   goal: LongRunningGoal | null;
+  intent: IntentDraft | null;
   thinking: boolean;
 }
 
@@ -45,6 +46,7 @@ export const initialAgentState: AgentState = {
   connectionStatus: 'connecting',
   steerQueue: [],
   goal: null,
+  intent: null,
   thinking: true,
 };
 
@@ -78,6 +80,8 @@ function snapshotFiles(files: Array<{ file: FileNode; content: string }>) {
 /** Pure SSE reducer: transport owns delivery, this module owns state transitions. */
 export function reduceAgentEvent(state: AgentState, event: AgentEvent): Partial<AgentState> | null {
   switch (event.type) {
+    case 'session_deleted':
+      return null;
     case 'session_start':
       return { summary: event.session };
     case 'session_snapshot': {
@@ -90,6 +94,7 @@ export function reduceAgentEvent(state: AgentState, event: AgentEvent): Partial<
         messages: event.messages,
         steerQueue: event.steers,
         goal: event.goal,
+        intent: event.intent,
         thinking: event.thinking,
         streaming: reconnecting ? state.streaming : null,
         cwd: event.cwd,
@@ -174,18 +179,24 @@ export function reduceAgentEvent(state: AgentState, event: AgentEvent): Partial<
     case 'steer_cleared':
       return { steerQueue: [] };
     case 'goal_updated':
-      // Slash goal commands (pause/resume/clear) can complete without producing an assistant
-      // message. End the optimistic composer state here; a continuation will set loading again
-      // as soon as its first streaming event arrives.
-      return { goal: event.goal, loading: false, streaming: null };
+      // Runtime initialization also publishes Goal state during the first prompt. It must not
+      // tear down the optimistic Working turn before the first streaming event arrives.
+      return event.settleTurn
+        ? { goal: event.goal, loading: false, streaming: null }
+        : { goal: event.goal };
+    case 'intent_updated':
+      return { intent: event.intent };
     case 'thinking_updated':
       return { thinking: event.thinking };
+    case 'skills_changed':
+      return null;
     case 'turn_interrupted': {
       const messages = state.messages.slice();
       if (messages[messages.length - 1]?.role === 'user') messages.pop();
       return { messages, streaming: null, loading: false, steerQueue: [] };
     }
     case 'turn_replaced':
+    case 'turn_started':
       return {
         messages: [...state.messages, event.message], streaming: emptyStreamingTurn(), loading: true,
         error: null, steerQueue: [],

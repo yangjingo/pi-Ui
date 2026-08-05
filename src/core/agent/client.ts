@@ -28,6 +28,13 @@ import {
 } from './state';
 
 type ActionResult = { ok: boolean; error?: string };
+const STREAM_COMMIT_INTERVAL_MS = 32;
+
+function isMergeableStreamEvent(event: AgentEvent): boolean {
+  return event.type === 'text_delta'
+    || event.type === 'thinking_delta'
+    || event.type === 'tool_update';
+}
 
 export class BrowserAgentClient implements AgentClient {
   private state: AgentClientState = initialAgentClientState;
@@ -35,6 +42,8 @@ export class BrowserAgentClient implements AgentClient {
   private eventListeners = new Set<(e: AgentEvent) => void>();
   private es: EventSource | null = null;
   private reconnectTimer: number | null = null;
+  private pendingStreamEvents: AgentEvent[] = [];
+  private streamCommitTimer: ReturnType<typeof setTimeout> | null = null;
   private onOffline = () => {
     this.set({ connectionStatus: 'reconnecting' });
     if (this.es?.readyState === EventSource.CLOSED) this.scheduleReconnect(this.es);
@@ -86,7 +95,7 @@ export class BrowserAgentClient implements AgentClient {
         });
       };
       stream.onmessage = (msg) => {
-        try { this.reduce(JSON.parse(msg.data) as AgentEvent); } catch { /* skip keepalive comments */ }
+        try { this.receive(JSON.parse(msg.data) as AgentEvent); } catch { /* skip keepalive comments */ }
       };
       stream.onerror = () => {
         if (this.es !== stream) return;
@@ -144,14 +153,75 @@ export class BrowserAgentClient implements AgentClient {
     this.set({ sessions: { ...this.state.sessions, [id]: { ...current, ...patch } } });
   }
 
+  /** Raw subscribers keep event fidelity; the React store receives high-frequency updates in batches. */
+  private receive(event: AgentEvent) {
+    for (const listener of this.eventListeners) listener(event);
+    if (isMergeableStreamEvent(event)) {
+      this.pendingStreamEvents.push(event);
+      if (this.streamCommitTimer == null) {
+        this.streamCommitTimer = setTimeout(() => this.flushPendingStreamEvents(), STREAM_COMMIT_INTERVAL_MS);
+      }
+      return;
+    }
+    const pending = this.takePendingStreamEvents();
+    this.commitEvents([...pending, event]);
+  }
+
+  private takePendingStreamEvents(): AgentEvent[] {
+    if (this.streamCommitTimer != null) {
+      clearTimeout(this.streamCommitTimer);
+      this.streamCommitTimer = null;
+    }
+    const pending = this.pendingStreamEvents;
+    this.pendingStreamEvents = [];
+    return pending;
+  }
+
+  private flushPendingStreamEvents() {
+    const pending = this.takePendingStreamEvents();
+    if (pending.length) this.commitEvents(pending);
+  }
+
+  private commitEvents(events: AgentEvent[]) {
+    let nextState = this.state;
+    for (const event of events) {
+      if (event.type === 'session_deleted') {
+        const sessions = { ...nextState.sessions };
+        delete sessions[event.deletedSessionId];
+        nextState = { ...nextState, sessions };
+        continue;
+      }
+      const current = nextState.sessions[event.sessionId] ?? {
+        ...initialAgentState,
+        model: nextState.model,
+        workspaceRoot: nextState.workspaceRoot,
+        connectionStatus: nextState.connectionStatus,
+      };
+      const patch = reduceAgentEvent({
+        ...current,
+        connectionStatus: nextState.connectionStatus,
+      }, event);
+      if (patch) {
+        nextState = {
+          ...nextState,
+          sessions: {
+            ...nextState.sessions,
+            [event.sessionId]: { ...current, ...patch },
+          },
+        };
+      }
+      if (event.type === 'session_snapshot' && nextState.connectionStatus === 'reconnecting') {
+        nextState = { ...nextState, connectionStatus: 'connected' };
+      }
+    }
+    if (nextState === this.state) return;
+    this.state = nextState;
+    this.emit();
+  }
+
   private reduce(e: AgentEvent) {
     for (const l of this.eventListeners) l(e);
-    const current = { ...this.sessionState(e.sessionId), connectionStatus: this.state.connectionStatus };
-    const patch = reduceAgentEvent(current, e);
-    if (patch) this.setSession(e.sessionId, patch);
-    if (e.type === 'session_snapshot' && this.state.connectionStatus === 'reconnecting') {
-      this.set({ connectionStatus: 'connected' });
-    }
+    this.commitEvents([e]);
   }
 
   // ---- AgentClient methods (HTTP) ----
@@ -219,6 +289,33 @@ export class BrowserAgentClient implements AgentClient {
     } catch { /* ignore */ }
   }
 
+  async confirmIntent(
+    sessionId: string,
+    request: { intentId: string; revision: number; contractHash: string; replaceExisting?: boolean },
+  ) {
+    try {
+      return await requestJson<{ ok: boolean; error?: string; intent?: import('./types').IntentDraft }>('/api/intent/confirm', {
+        method: 'POST',
+        body: { sessionId, ...request },
+        errorMessage: '确认 Goal Contract 失败',
+      });
+    } catch (error) {
+      return { ok: false, error: messageOf(error) };
+    }
+  }
+
+  async dismissIntent(sessionId: string, intentId: string) {
+    try {
+      return await requestJson<{ ok: boolean; error?: string; intent?: import('./types').IntentDraft }>('/api/intent/dismiss', {
+        method: 'POST',
+        body: { sessionId, intentId },
+        errorMessage: '取消 Goal Contract 失败',
+      });
+    } catch (error) {
+      return { ok: false, error: messageOf(error) };
+    }
+  }
+
   // ---- model configuration (plain HTTP; the drawer refreshes view state after) ----
   async listModels(): Promise<ModelOption[]> {
     try { return (await requestJson<{ models?: ModelOption[] }>('/api/models')).models ?? []; }
@@ -281,10 +378,10 @@ export class BrowserAgentClient implements AgentClient {
     } catch (error) { return { ok: false, error: 'network: ' + messageOf(error) }; }
   }
 
-  /** Ask Core's SkillHarness to turn one completed Agent message plus its trajectory into a local Skill. */
-  async createSkillFromTurn(sessionId: string, messageIndex: number): Promise<{ ok: boolean; error?: string; skill?: { id: string; name: string } }> {
+  /** Ask Core's SkillHarness to turn one completed Agent message plus its trajectory into a Session draft. */
+  async createSkillFromTurn(sessionId: string, messageIndex: number): Promise<{ ok: boolean; error?: string; draft?: { id: string; directory: string; path: string; sourceMessageIndex: number } }> {
     try {
-      const result = await requestJson<ActionResult & { skill?: { id: string; name: string } }>('/api/skills/from-turn', {
+      const result = await requestJson<ActionResult & { draft?: { id: string; directory: string; path: string; sourceMessageIndex: number } }>('/api/skills/from-turn', {
         method: 'POST',
         body: { sessionId, messageIndex },
         errorMessage: '无法从本轮生成 Skill',
@@ -294,7 +391,7 @@ export class BrowserAgentClient implements AgentClient {
         this.setSession(sessionId, { error });
         return { ok: false, error };
       }
-      return { ok: true, skill: result.skill };
+      return { ok: true, draft: result.draft };
     } catch (cause) {
       const error = 'network: ' + messageOf(cause);
       this.setSession(sessionId, { error });
@@ -469,6 +566,22 @@ export class BrowserAgentClient implements AgentClient {
       const error = messageOf(cause);
       this.setSession(id, { error });
       return { ok: false, error };
+    }
+  }
+
+  async deleteSession(id: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const result = await requestJson<ActionResult>('/api/session?id=' + encodeURIComponent(id), {
+        method: 'DELETE',
+        errorMessage: '无法删除会话',
+      });
+      if (!result.ok) return { ok: false, error: result.error || '无法删除会话' };
+      const sessions = { ...this.state.sessions };
+      delete sessions[id];
+      this.set({ sessions });
+      return { ok: true };
+    } catch (cause) {
+      return { ok: false, error: messageOf(cause) };
     }
   }
 

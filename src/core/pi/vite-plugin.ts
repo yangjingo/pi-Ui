@@ -3,10 +3,14 @@
 
 import type { Plugin } from 'vite';
 import { createApiHandler } from './transport';
+import { injectUiBootstrap, resolveUiBootstrap } from './ui-bootstrap';
 
 export function piAgentPlugin(): Plugin {
   return {
     name: 'pi-agent-core',
+    transformIndexHtml(html) {
+      return injectUiBootstrap(html, resolveUiBootstrap());
+    },
     configureServer(server) {
       const api = createApiHandler();
       // Plugin middlewares install before Vite's transform/SPA-fallback, so /api/* is intercepted cleanly.

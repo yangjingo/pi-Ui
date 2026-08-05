@@ -3,8 +3,18 @@
 
 import 'dotenv/config';
 import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager } from '@earendil-works/pi-coding-agent';
-import { join, resolve } from 'node:path';
-import { mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, existsSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
@@ -17,6 +27,7 @@ import {
   type Artifact,
   type CustomModelEntry,
   type FileNode,
+  type IntentDraft,
   type Message,
   type ModelConfigFile,
   type ModelOption,
@@ -29,15 +40,25 @@ import {
   type WorkspaceChange,
 } from '../agent/protocol';
 import { CoreModelConfiguration, DEFAULT_MODEL_SPEC } from './model-configuration';
-import { FileHarness } from '../../harness/file/runtime';
+import { FileHarness, WorkspaceAccessPolicy, type FileArchiveResult } from '../../harness/file/runtime';
 import {
   ContextHarness,
   type ContextPrefixSnapshot,
   type ContextUsage,
 } from '../../harness/context';
-import { GoalHarness } from '../../harness/goal';
+import { GoalHarness, IntentHarness } from '../../harness/goal';
 import { SkillHarness } from '../../harness/skill';
+import {
+  classifyShellCommand,
+  normalizeShellText,
+  repairHistoricalShellTrajectories,
+} from './shell-output';
 import { createContextExtension } from './context-extension';
+import { createIntentExtension } from './intent-extension';
+import { createPowerShellToolDefinition } from './powershell-tool';
+import { createWorkspaceAccessExtension } from './workspace-access-extension';
+import { createSkillEnvironmentExtension } from './skill-environment-extension';
+import { createSkillPackageExtension } from './skill-package-extension';
 import {
   inheritedWorkingDirectory,
   inspectPiInstallation,
@@ -55,7 +76,7 @@ const MODEL_SPEC = DEFAULT_MODEL_SPEC;
 const SESSION_INDEX_FILE = '.sessions.json';
 const SESSION_RECORD_FILE = '.session.json';
 const MAX_SESSION_RECORD_BYTES = 8 * 1024 * 1024;
-const CODING_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls'] as const;
+const CODING_TOOL_NAMES = ['read', 'write', 'edit', 'powershell', 'bash', 'grep', 'find', 'ls', 'skill_environment', 'skill_package'] as const;
 
 interface PersistedSessionRecord {
   version: 1;
@@ -95,6 +116,9 @@ interface SessionExecutionState {
   firstTokenAt: number;
   activeSpec: string;
   initError: string | undefined;
+  skillRevision: number;
+  activeSkillIds: Set<string>;
+  activeSkillEnvironments: Map<string, string>;
 }
 
 /** Load the persisted working-directory override (falls back to PI_CWD / .workspace). */
@@ -171,20 +195,28 @@ function summarizeArgs(args: any): string {
   if (p) return String(p);
   try { return JSON.stringify(args).slice(0, 120); } catch { return ''; }
 }
-function summarizeResult(result: any, isError: boolean): string {
-  if (isError) return '出错';
-  if (!result) return '完成';
+function trajectoryResult(result: any, isError: boolean): {
+  text: string;
+  encoding: 'utf-8' | 'normalized' | 'lossy';
+} {
+  if (!result) return { text: isError ? '执行失败' : '完成', encoding: 'utf-8' };
   const content = result.content;
   if (Array.isArray(content)) {
-    const text = content.map((c: any) => c?.text || '').join('').trim();
-    if (text) return text.split('\n')[0].slice(0, 120);
+    const source = content.map((item: any) => item?.type === 'text' ? item.text || '' : '').join('\n');
+    const normalized = normalizeShellText(source);
+    if (normalized.text) {
+      return {
+        text: normalized.text.slice(0, 256 * 1024),
+        encoding: normalized.encoding,
+      };
+    }
   }
-  return '完成';
+  return { text: isError ? '执行失败' : '完成', encoding: 'utf-8' };
 }
 
 // Minimal title map for trajectory rows.
 const TOOL_TITLE: Record<string, string> = {
-  read: '读取文件', write: '写入文件', edit: '编辑文件', bash: '执行命令',
+  read: '读取文件', write: '写入文件', edit: '编辑文件', bash: '执行命令', powershell: '执行 PowerShell',
   grep: '搜索内容', find: '查找文件', ls: '列出目录',
 };
 
@@ -204,8 +236,10 @@ export class PiRuntime {
   private bootstrapLoading: Promise<RuntimeBootstrapResult> | null = null;
   private skillHarness = new SkillHarness(() => resolve(this.workspaceRoot, 'skills'));
   private goalHarness = new GoalHarness();
+  private intentHarness = new IntentHarness();
   private modelConfiguration = new CoreModelConfiguration();
   private runtimeReady = false;
+  private skillRevision = 0;
 
   constructor() {
     this.loadSessions();
@@ -254,6 +288,9 @@ export class PiRuntime {
       firstTokenAt: 0,
       activeSpec: MODEL_SPEC,
       initError: undefined,
+      skillRevision: -1,
+      activeSkillIds: new Set<string>(),
+      activeSkillEnvironments: new Map<string, string>(),
     };
     state.fileHarness = new FileHarness(() => state.cwd);
     this.executions.set(id, state);
@@ -314,19 +351,27 @@ export class PiRuntime {
   private get cwd() { return this.current().cwd; }
 
   listSkills() {
-    return this.skillHarness.list();
+    return this.skillHarness.catalog().map(skill => ({ ...skill, files: {} }));
+  }
+
+  getSkill(id: string) {
+    return this.skillHarness.read(id);
   }
 
   saveSkill(input: any) {
-    return this.skillHarness.save(input);
+    const result = this.skillHarness.save(input);
+    if (result.ok) this.skillRevision++;
+    return result;
   }
 
   deleteSkill(id: string) {
-    return this.skillHarness.remove(id);
+    const result = this.skillHarness.remove(id);
+    if (result.ok) this.skillRevision++;
+    return result;
   }
 
-  /** Persist a reviewable local Skill from one completed message and its recorded trajectory.
-   * The projection itself lives in SkillHarness so this runtime remains only the session/persistence bridge. */
+  /** Materialize a reviewable Skill draft inside the addressed Session. Publishing remains a
+   * separate, user-confirmed skill_package action after an @SKILL.md validation turn. */
   createSkillFromTurn(sessionId: string, messageIndex: number) {
     return this.withSession(sessionId, () => this.createSkillFromCurrentTurn(messageIndex));
   }
@@ -339,7 +384,31 @@ export class PiRuntime {
     for (let cursor = index - 1; cursor >= 0; cursor--) {
       if (this.messages[cursor]?.role === 'user') { user = this.messages[cursor]; break; }
     }
-    return this.skillHarness.saveFromTurn({ user, agent });
+    const workspaceFiles = Object.fromEntries(this.fileHarness.snapshot().map(item => [item.file.path || item.file.name, item.content]));
+    const draft = this.skillHarness.createFromTurn({ user, agent, workspaceFiles });
+    const directory = `skill-drafts/${draft.id}`;
+    const written: string[] = [];
+    const events: Array<{ file: FileNode; content: string }> = [];
+    for (const [relativePath, content] of Object.entries(draft.files)) {
+      const path = `${directory}/${relativePath}`;
+      const saved = this.fileHarness.saveText(path, content);
+      if (!saved.ok || !saved.file) {
+        for (const previous of written) this.fileHarness.deleteFile(previous);
+        return { ok: false, error: saved.error || '无法写入 Skill 草稿' };
+      }
+      written.push(path);
+      events.push({ file: saved.file, content: saved.content || content });
+    }
+    for (const event of events) this.emit({ type: 'file', ...event });
+    return {
+      ok: true,
+      draft: {
+        id: draft.id,
+        directory,
+        path: `${directory}/SKILL.md`,
+        sourceMessageIndex: index,
+      },
+    };
   }
 
   private sessionIndexPath(): string {
@@ -409,6 +478,50 @@ export class PiRuntime {
     return join(this.resolveSessionPath(id), SESSION_RECORD_FILE);
   }
 
+  /** Resolve one direct child owned by Core and reject symlinks/junction escapes before any
+   * recursive removal. The caller supplies an already-authorized Session ID from the index. */
+  private ownedSessionDirectory(root: string, id: string): string | null {
+    const rootAbs = resolve(root);
+    const target = resolve(rootAbs, id);
+    const rel = relative(rootAbs, target);
+    if (
+      !id ||
+      rel !== id ||
+      rel === '..' ||
+      rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ||
+      isAbsolute(rel) ||
+      rel.includes('/') ||
+      rel.includes('\\')
+    ) {
+      throw new Error('Session 持久目录不在允许的根目录内');
+    }
+    if (!existsSync(target)) return null;
+    const link = lstatSync(target);
+    if (!link.isDirectory() || link.isSymbolicLink()) {
+      throw new Error('Session 持久目录类型不安全，已拒绝删除');
+    }
+    const rootReal = realpathSync(rootAbs);
+    const targetReal = realpathSync(target);
+    if (relative(rootReal, targetReal) !== id) {
+      throw new Error('Session 持久目录越过允许的根目录');
+    }
+    return target;
+  }
+
+  private resetLegacyExecutionAfterDelete(deleted: SessionExecutionState | undefined): void {
+    if (!deleted || this.legacyExecution !== deleted) return;
+    const next = this.sessions[0] ? this.executionFor(this.sessions[0].id) : null;
+    if (next) {
+      this.legacyExecution = next;
+      return;
+    }
+    const fallback = this.nextSessionSummary({ id: '__legacy__', status: 'idle' });
+    this.sessions.push(fallback);
+    this.legacyExecution = this.executionFor(fallback.id)!;
+    this.sessions.pop();
+    this.executions.delete(fallback.id);
+  }
+
   /** Read only the durable, UI-safe transcript. Corrupt or oversized records never prevent
    * a session's files from opening. */
   private loadSessionMessages(id: string): Message[] {
@@ -420,10 +533,19 @@ export class PiRuntime {
       }
       const record = JSON.parse(readFileSync(recordPath, 'utf8')) as Partial<PersistedSessionRecord>;
       if (record.version !== 1 || !Array.isArray(record.messages)) return [];
-      return record.messages
+      const persisted = record.messages
         .filter((message): message is Message => !!message &&
           (message.role === 'user' || message.role === 'agent'))
         .map(message => this.fileHarness.projectMessage(message));
+      const summary = this.sessions.find(session => session.id === id);
+      const source = summary?.pi
+        ? loadPiSessionMessages(summary.pi.forkPath || summary.pi.sourcePath)
+        : this.piInspection?.sessions
+          .find(session => resolve(session.pi?.sourceCwd || '').toLowerCase() ===
+            resolve(this.workspaceRoot, id).toLowerCase())
+          ?.pi?.sourcePath;
+      const projected = typeof source === 'string' ? loadPiSessionMessages(source) : source || [];
+      return repairHistoricalShellTrajectories(persisted, projected);
     } catch {
       return [];
     }
@@ -504,6 +626,7 @@ export class PiRuntime {
       messages: this.messages.slice(),
       steers: this.steerQueue.map(entry => ({ ...entry.item })),
       goal: this.goalHarness.snapshot(this.session),
+      intent: this.intentHarness.snapshot(this.session),
       thinking: this.thinkingLevel !== 'off',
       cwd: this.cwd,
       files: this.fileHarness.snapshot(),
@@ -511,9 +634,25 @@ export class PiRuntime {
     };
   }
 
-  private emitGoalSnapshot(): void {
+  private emitGoalSnapshot(settleTurn = false): void {
     this.emitGoalBudgetReport();
-    this.emit({ type: 'goal_updated', goal: this.goalHarness.snapshot(this.session) });
+    const goal = this.goalHarness.snapshot(this.session);
+    const intent = this.intentHarness.snapshot(this.session);
+    if (
+      goal &&
+      intent?.status === 'confirmed' &&
+      !intent.linkedGoalId &&
+      intent.contractHash &&
+      goal.objective.includes(`Contract Hash: ${intent.contractHash}`)
+    ) {
+      const linked = this.intentHarness.linkGoal(this.session, intent.intentId, goal.goalId);
+      if (linked) this.emit({ type: 'intent_updated', intent: linked });
+    }
+    this.emit({ type: 'goal_updated', goal, ...(settleTurn ? { settleTurn: true } : {}) });
+  }
+
+  private emitIntentSnapshot(intent: IntentDraft | null = this.intentHarness.snapshot(this.session)): void {
+    this.emit({ type: 'intent_updated', intent });
   }
 
   private responseUsageForReport(current?: ContextUsage): ContextUsage | undefined {
@@ -776,18 +915,60 @@ export class PiRuntime {
     const toolNames = this.contextHarness.stableToolNames(
       CODING_TOOL_NAMES,
       this.goalHarness.toolNames,
+      this.intentHarness.toolNames,
     );
+    const state = this.current();
+    const workspaceAccess = new WorkspaceAccessPolicy({
+      sessionRoot: () => state.cwd,
+      skillRoots: () => this.skillHarness.catalog().filter(skill => skill.enabled).map(skill => skill.rootPath),
+      environmentRoots: () => [...state.activeSkillEnvironments.values()],
+    });
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
       agentDir: getAgentDir(),
       noExtensions: true,
       noSkills: true,
       noContextFiles: true,
+      additionalSkillPaths: [this.skillHarness.rootPath()],
+      skillsOverride: base => {
+        const enabled = new Map(
+          this.skillHarness.catalog().filter(skill => skill.enabled)
+            .map(skill => [resolve(skill.skillPath), skill] as const),
+        );
+        return {
+          ...base,
+          skills: base.skills.flatMap(skill => {
+            const local = enabled.get(resolve(skill.filePath));
+            return local ? [{ ...skill, name: local.commandName }] : [];
+          }),
+        };
+      },
       additionalExtensionPaths: [this.goalHarness.extensionPath],
-      extensionFactories: [createContextExtension(this.contextHarness)],
+      extensionFactories: [
+        createContextExtension(this.contextHarness),
+        createWorkspaceAccessExtension(workspaceAccess),
+        createSkillEnvironmentExtension(this.skillHarness, {
+          isActive: skillId => state.activeSkillIds.has(skillId),
+          onEnvironment: environment => state.activeSkillEnvironments.set(environment.skillId, environment.path),
+        }),
+        createSkillPackageExtension(this.skillHarness, {
+          sessionRoot: () => state.cwd,
+          onInstalled: skill => this.executionScope.run(state, () => {
+            this.skillRevision++;
+            this.emit({ type: 'skills_changed', skillId: skill.id });
+          }),
+        }),
+        createIntentExtension(this.intentHarness, {
+          session: () => state.session,
+          sessionId: () => state.id,
+          goal: () => this.goalHarness.snapshot(state.session),
+          onIntent: intent => this.executionScope.run(state, () => this.emitIntentSnapshot(intent)),
+        }),
+      ],
       appendSystemPrompt: [this.contextHarness.systemPrompt],
     });
     await resourceLoader.reload();
+    state.skillRevision = this.skillRevision;
     const { session } = await createAgentSession({
       cwd: this.cwd,
       model,
@@ -797,11 +978,11 @@ export class PiRuntime {
       sessionManager,
       thinkingLevel: this.thinkingLevel as any,
       tools: toolNames,
+      customTools: [createPowerShellToolDefinition(this.cwd)],
       resourceLoader,
     });
     this.session = session;
     this.contextPrefixBaseline = this.contextPrefixSnapshot();
-    const state = this.current();
     session.subscribe((ev: any) => this.executionScope.run(state, () => this.handle(ev)));
   }
 
@@ -880,12 +1061,17 @@ export class PiRuntime {
         case 'tool_execution_start': {
           this.closeRunningThink();
           const goalTrajectory = this.goalHarness.trajectoryStart(ev.toolName, ev.args);
+          const shell = ev.toolName === 'bash' || ev.toolName === 'powershell'
+            ? classifyShellCommand(ev.args?.command, ev.toolName)
+            : undefined;
+          const shellInput = shell ? normalizeShellText(ev.args?.command || '') : null;
           const step: TrajStep = {
             id: ev.toolCallId,
             t: goalTrajectory ? 'goal' : mapPiTool(ev.toolName),
+            ...(shell ? { shell } : {}),
             title: goalTrajectory?.title || TOOL_TITLE[ev.toolName] || ev.toolName || '工具',
             det: goalTrajectory?.detail || summarizeArgs(ev.args),
-            in: goalTrajectory?.input || (() => { try { return JSON.stringify(ev.args); } catch { return undefined; } })(),
+            in: goalTrajectory?.input || shellInput?.text || (() => { try { return JSON.stringify(ev.args); } catch { return undefined; } })(),
             status: 'running',
             time: nowTime(),
             file: ev.args?.path || ev.args?.file_path || ev.args?.filePath,
@@ -899,14 +1085,27 @@ export class PiRuntime {
           this.emit({ type: 'tool_start', step });
           break;
         }
+        case 'tool_execution_update': {
+          const step = ev.toolCallId && this.steps.find(item => item.id === ev.toolCallId);
+          if (step) {
+            const output = trajectoryResult(ev.partialResult, false);
+            step.out = output.text;
+            if (step.shell) step.outputEncoding = output.encoding;
+            this.emit({ type: 'tool_update', step: { ...step } });
+          }
+          break;
+        }
         case 'tool_execution_end': {
           const step = (ev.toolCallId && this.steps.find(item => item.id === ev.toolCallId))
             || this.steps[this.steps.length - 1];
           if (step) {
             const goalTrajectory = this.goalHarness.trajectoryEnd(ev.toolName, ev.result, ev.isError);
+            const output = trajectoryResult(ev.result, ev.isError);
             step.status = 'done';
+            step.error = !!ev.isError;
             step.det = goalTrajectory?.detail || step.det;
-            step.out = goalTrajectory?.output || summarizeResult(ev.result, ev.isError);
+            step.out = goalTrajectory?.output || output.text;
+            if (step.shell) step.outputEncoding = output.encoding;
             this.emit({ type: 'tool_end', step });
           }
           const pending = this.pendingFiles.get(ev.toolCallId);
@@ -1051,10 +1250,20 @@ export class PiRuntime {
     );
   }
 
-  private modelPrompt(text: string): string {
-    // SkillHarness performs explicit, just-in-time disclosure. ContextHarness then keeps the
-    // resulting dynamic user turn free of timestamps and other prefix-breaking metadata.
-    return this.contextHarness.assembleUserTurn(this.skillHarness.inject(text));
+  private async modelPrompt(text: string): Promise<string> {
+    const state = this.current();
+    if (state.session && !state.session.isStreaming && state.skillRevision !== this.skillRevision) {
+      await state.session.resourceLoader?.reload?.();
+      state.skillRevision = this.skillRevision;
+    }
+    const invocation = this.skillHarness.resolveInvocation(text);
+    if (invocation.skillId && invocation.environment) {
+      state.activeSkillIds.add(invocation.skillId);
+      state.activeSkillEnvironments.set(invocation.skillId, invocation.environment.path);
+    }
+    // Pi expands /skill:name just in time and includes the exact Skill file location. The
+    // Context Harness only keeps the dynamic turn stable for prefix-cache reuse.
+    return this.contextHarness.assembleUserTurn(invocation.modelText);
   }
 
   private resetTurnAccumulators() {
@@ -1064,6 +1273,8 @@ export class PiRuntime {
     this.thinkingBuf = '';
     this.pendingFiles.clear();
     this.fileHarness.clearTurn();
+    this.current().activeSkillIds.clear();
+    this.current().activeSkillEnvironments.clear();
     this.turnStart = 0;
     this.firstTokenAt = 0;
   }
@@ -1075,7 +1286,7 @@ export class PiRuntime {
       if (this.goalHarness.isCommand(text)) {
         this.ensureGoalThinking(text);
         await this.session.prompt(this.contextHarness.assembleUserTurn(text));
-        this.emitGoalSnapshot();
+        this.emitGoalSnapshot(true);
         return;
       }
       await this.steerCurrent(text, presentation);
@@ -1084,7 +1295,12 @@ export class PiRuntime {
     await this.startPrompt(text, presentation);
   }
 
-  private async startPrompt(text: string, presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {}, replacement = false) {
+  private async startPrompt(
+    text: string,
+    presentation: { displayText?: string; workspaceChanges?: WorkspaceChange[] } = {},
+    replacement = false,
+    announceUserTurn = false,
+  ) {
     try {
       // A failed provider turn may not emit agent_end. Always start the next turn with clean
       // chronological accumulators so partial output cannot leak into a later response.
@@ -1094,6 +1310,8 @@ export class PiRuntime {
       this.thinkingBuf = '';
       this.pendingFiles.clear();
       this.fileHarness.clearTurn();
+      this.current().activeSkillIds.clear();
+      this.current().activeSkillEnvironments.clear();
       this.turnStart = Date.now();
       this.firstTokenAt = 0;
 
@@ -1148,7 +1366,8 @@ export class PiRuntime {
       this.turnParentId = this.session.sessionManager.getLeafId();
       this.persistSessionRecord();
       if (replacement) this.emit({ type: 'turn_replaced', message: userMessage });
-      await this.session.prompt(this.modelPrompt(text));
+      else if (announceUserTurn) this.emit({ type: 'turn_started', message: userMessage });
+      await this.session.prompt(await this.modelPrompt(text));
       this.emitGoalSnapshot();
     } catch (e: any) {
       this.summary = {
@@ -1175,7 +1394,7 @@ export class PiRuntime {
       const item: SteerItem = { id: newSessionId(), text: this.visibleUserMessage(text, presentation).text || text, when: nowTime() };
       const entry: QueuedSteer = {
         item,
-        modelText: this.modelPrompt(text),
+        modelText: await this.modelPrompt(text),
         message: this.visibleUserMessage(text, presentation),
       };
       this.steerQueue.push(entry);
@@ -1277,6 +1496,61 @@ export class PiRuntime {
 
   async setThinking(sessionId: string, on: boolean) {
     return this.withSession(sessionId, () => this.setThinkingCurrent(on));
+  }
+
+  async confirmIntent(
+    sessionId: string,
+    request: { intentId: string; revision: number; contractHash: string; replaceExisting?: boolean },
+  ) {
+    return this.withSession(sessionId, async () => {
+      await this.init();
+      if (!this.session) return { ok: false, error: this.initError || 'Agent Session 尚未就绪' };
+      const before = this.intentHarness.snapshot(this.session);
+      const result = this.intentHarness.confirm(this.session, {
+        ...request,
+        currentGoal: this.goalHarness.snapshot(this.session),
+      });
+      if (!result.ok || !result.intent || !result.objective) return result;
+      this.emitIntentSnapshot(result.intent);
+      if (result.intent.linkedGoalId) return result;
+      if (
+        before?.status === 'confirmed' &&
+        before.revision === request.revision &&
+        before.contractHash === request.contractHash &&
+        this.session.isStreaming
+      ) {
+        return result;
+      }
+
+      this.applyThinkingLevel('max');
+      const replace = request.replaceExisting === true;
+      const instruction = [
+        '<confirmed_goal_contract>',
+        'The user explicitly confirmed this exact Goal Contract.',
+        `Intent ID: ${result.intent.intentId}`,
+        `Revision: ${result.intent.revision}`,
+        `Contract Hash: ${result.intent.contractHash}`,
+        `Call create_goal now with replace_existing=${replace ? 'true' : 'false'} and the exact objective below.`,
+        'Do not revise, summarize, or omit any numbered requirement.',
+        '',
+        result.objective,
+        '</confirmed_goal_contract>',
+      ].join('\n');
+      void this.startPrompt(instruction, {
+        displayText: replace ? '确认并替换当前目标' : '确认并开始目标',
+      }, false, true);
+      return result;
+    });
+  }
+
+  async dismissIntent(sessionId: string, intentId: string) {
+    return this.withSession(sessionId, async () => {
+      await this.init();
+      if (!this.session) return { ok: false, error: this.initError || 'Agent Session 尚未就绪' };
+      const result = this.intentHarness.dismiss(this.session, intentId);
+      if (result.intent) this.emitIntentSnapshot(result.intent);
+      return result;
+    });
   }
 
   async listModels(): Promise<ModelOption[]> {
@@ -1412,6 +1686,34 @@ export class PiRuntime {
     return this.withSession(sessionId, () => this.fileHarness.readCanvasBinary(path));
   }
 
+  /** Download reads are intentionally separate from Canvas preview reads: previews keep their
+   * smaller renderer budget, while an explicit user download may read files up to the archive limit. */
+  readWorkspaceDownload(sessionId: string, path: string) {
+    return this.withSession(sessionId, () => this.fileHarness.readDownload(path));
+  }
+
+  archiveWorkspaceFiles(sessionId: string, paths: ReadonlyArray<string>): FileArchiveResult & { filename?: string } {
+    return this.withSession(sessionId, () => {
+      const result = this.fileHarness.archive(paths);
+      if (!result.ok) return result;
+      const safeTitle = this.current().summary.title
+        .trim()
+        .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+        .replace(/[. ]+$/g, '')
+        .slice(0, 64) || 'workspace';
+      const now = new Date();
+      const stamp = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+        '-',
+        String(now.getHours()).padStart(2, '0'),
+        String(now.getMinutes()).padStart(2, '0'),
+      ].join('');
+      return { ...result, filename: `${safeTitle}-files-${stamp}.zip` };
+    });
+  }
+
   listSessions(): SessionSummary[] {
     return this.sessions.map(session => this.publicSessionSummary(session));
   }
@@ -1429,6 +1731,41 @@ export class PiRuntime {
     const summary = this.publicSessionSummary(next);
     this.withSession(next.id, () => this.emit({ type: 'session_start', session: summary }));
     return summary;
+  }
+
+  async deleteSession(id: string): Promise<{ ok: boolean; error?: string }> {
+    const index = this.sessions.findIndex(session => session.id === id);
+    if (index < 0) return { ok: false, error: '会话不存在' };
+    const summary = this.sessions[index];
+    const execution = this.executions.get(id);
+    if (execution?.session?.isStreaming) {
+      return { ok: false, error: '会话仍在运行，完成或停止后才能删除' };
+    }
+
+    try {
+      const sessionDirectory = this.ownedSessionDirectory(this.workspaceRoot, id);
+      const inheritedRoot = join(process.cwd(), '.workspace', '.agentcore', 'inherited-sessions');
+      const inheritedDirectory = summary.pi
+        ? this.ownedSessionDirectory(inheritedRoot, id)
+        : null;
+
+      try { execution?.session?.dispose?.(); } catch { /* disposal is best effort */ }
+      execution?.fileHarness.clear();
+
+      // Delete the disposable inherited fork first. Never touch sourcePath or sourceCwd:
+      // imported Pi sessions remain read-only external sources.
+      if (inheritedDirectory) rmSync(inheritedDirectory, { recursive: true, force: false, maxRetries: 2 });
+      if (sessionDirectory) rmSync(sessionDirectory, { recursive: true, force: false, maxRetries: 2 });
+
+      this.sessions.splice(index, 1);
+      this.executions.delete(id);
+      this.resetLegacyExecutionAfterDelete(execution);
+      this.persistSessions();
+      this.emit({ type: 'session_deleted', sessionId: id, deletedSessionId: id });
+      return { ok: true };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || String(error) };
+    }
   }
 }
 

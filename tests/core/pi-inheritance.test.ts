@@ -40,6 +40,12 @@ test('installed Pi sessions are discovered and projected without rewriting the s
           name: 'read',
           arguments: { path: 'README.md' },
         },
+        {
+          type: 'toolCall',
+          id: 'call-2',
+          name: 'read',
+          arguments: { path: 'oversized.log' },
+        },
         { type: 'text', text: 'The existing work is ready.' },
       ],
       api: 'openai-completions',
@@ -64,6 +70,14 @@ test('installed Pi sessions are discovered and projected without rewriting the s
       isError: false,
       timestamp: Date.now(),
     });
+    native.appendMessage({
+      role: 'toolResult',
+      toolCallId: 'call-2',
+      toolName: 'read',
+      content: [{ type: 'text', text: `HEAD_SHOULD_BE_OMITTED\n${'x'.repeat(5_000)}\nTAIL_ERROR` }],
+      isError: true,
+      timestamp: Date.now(),
+    });
 
     const sourcePath = native.getSessionFile();
     assert.ok(sourcePath);
@@ -82,6 +96,11 @@ test('installed Pi sessions are discovered and projected without rewriting the s
     assert.equal(messages[1]?.intro, 'The existing work is ready.');
     assert.equal(messages[1]?.traj?.some(step => step.t === 'think'), true);
     assert.equal(messages[1]?.traj?.find(step => step.id === 'call-1')?.out, '# Existing');
+    const oversizedOutput = messages[1]?.traj?.find(step => step.id === 'call-2')?.out || '';
+    assert.equal(oversizedOutput.length, 4 * 1024);
+    assert.equal(oversizedOutput.startsWith('…\n'), true);
+    assert.equal(oversizedOutput.includes('HEAD_SHOULD_BE_OMITTED'), false);
+    assert.equal(oversizedOutput.endsWith('TAIL_ERROR'), true);
     assert.equal(await readFile(sourcePath, 'utf8'), before);
 
     const inspection = await inspectPiInstallation(agentDir);

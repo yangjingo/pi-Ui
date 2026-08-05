@@ -4,6 +4,7 @@ import { createServer as createNetServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { loopbackHost } from './network-policy';
 import { spawn } from 'node:child_process';
 
 type Command = 'doctor' | 'help' | 'install' | 'start' | 'version';
@@ -54,7 +55,7 @@ Usage:
 
 Options:
   --cwd <path>             Project directory (default: current directory)
-  --host <host>            Listen host (default: 127.0.0.1)
+  --host <host>            Loopback host only (default: 127.0.0.1)
   --port <port>            Listen port (default: 4173)
   --no-open                Do not open a browser
   --json                   JSON output for doctor
@@ -76,11 +77,7 @@ function validPort(value: string | undefined): number {
 }
 
 function validHost(value: string | undefined): string {
-  const host = value || '127.0.0.1';
-  if (!/^[a-z0-9.:[\]-]+$/iu.test(host)) {
-    throw new Error(`Invalid host "${host}".`);
-  }
-  return host;
+  return loopbackHost(value);
 }
 
 export function parseCliArgs(argv: string[], baseCwd = process.cwd()): CliOptions {
@@ -327,7 +324,7 @@ async function start(options: CliOptions, installing: boolean): Promise<void> {
     port: options.port,
   });
 
-  const visibleHost = options.host === '0.0.0.0' || options.host === '::' ? 'localhost' : options.host;
+  const visibleHost = options.host.includes(':') ? `[${options.host}]` : options.host;
   const url = `http://${visibleHost}:${options.port}`;
   if (installing) console.log(`Pi UI initialized at ${workspacePath}`);
   console.log(`Pi UI ${await packageVersion()} → ${url}`);

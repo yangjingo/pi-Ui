@@ -5,6 +5,7 @@ import type {
   CustomModelEntry,
   FileType,
   FileNode,
+  IntentDraft,
   LongRunningGoal,
   Message,
   ModelConfigFile,
@@ -26,9 +27,11 @@ import type {
  */
 export type AgentEventPayload =
   | { type: 'session_start'; session: SessionSummary }
+  /** Core permanently removed the Session record and its owned persistence directory. */
+  | { type: 'session_deleted'; deletedSessionId: string }
   /** Complete persisted state for one session. Sent on initial connect and session switches so
    * the conversation transcript and its workspace always change together. */
-  | { type: 'session_snapshot'; session: SessionSummary; messages: Message[]; steers: SteerItem[]; goal: LongRunningGoal | null; thinking: boolean; cwd: string; files: Array<{ file: FileNode; content: string }>; reason: 'initial' | 'session' | 'cwd' }
+  | { type: 'session_snapshot'; session: SessionSummary; messages: Message[]; steers: SteerItem[]; goal: LongRunningGoal | null; intent: IntentDraft | null; thinking: boolean; cwd: string; files: Array<{ file: FileNode; content: string }>; reason: 'initial' | 'session' | 'cwd' }
   | { type: 'text_delta'; delta: string }            // streaming assistant text
   | { type: 'thinking_delta'; delta: string }        // streaming reasoning tokens
   | { type: 'tool_start'; step: TrajStep }           // a trajectory step began
@@ -43,15 +46,21 @@ export type AgentEventPayload =
   | { type: 'steer_delivered'; id: string; message: Message }
   | { type: 'steer_cleared' }
   /** The pi-codex-goal harness changed durable goal state for the active Pi session. */
-  | { type: 'goal_updated'; goal: LongRunningGoal | null }
+  | { type: 'goal_updated'; goal: LongRunningGoal | null; settleTurn?: boolean }
+  /** Durable pre-Goal Intent/Contract state changed for this Session. */
+  | { type: 'intent_updated'; intent: IntentDraft | null }
   /** GoalHarness generated a terminal report file that should be presented in Canvas. */
   | { type: 'goal_report'; goalId: string; file: FileNode; content: string }
   /** Core changed the effective reasoning mode, including the automatic /goal policy. */
   | { type: 'thinking_updated'; thinking: boolean }
+  /** A controlled Harness install changed the Workspace Skill catalog. */
+  | { type: 'skills_changed'; skillId: string }
   /** The current agent loop was stopped and its user input was removed from the active Pi branch. */
   | { type: 'turn_interrupted' }
   /** The replacement prompt for an interrupted turn, emitted before its new loop begins. */
   | { type: 'turn_replaced'; message: Message }
+  /** A Core-originated user action (for example Contract confirmation) started an Agent turn. */
+  | { type: 'turn_started'; message: Message }
   | { type: 'agent_end'; message: Message }          // assistant turn finalized
   | { type: 'error'; message: string };
 
@@ -75,6 +84,10 @@ export interface AgentClient {
   interruptAndSteer(sessionId: string, text: string, displayText?: string, workspaceChanges?: WorkspaceChange[]): Promise<boolean>;
   /** Toggle extended thinking (reasoning tokens) for subsequent turns. */
   setThinking(sessionId: string, on: boolean): Promise<void>;
+  /** Confirm the exact current Contract revision; Core then asks the Agent to create the Goal. */
+  confirmIntent(sessionId: string, request: { intentId: string; revision: number; contractHash: string; replaceExisting?: boolean }): Promise<{ ok: boolean; error?: string; intent?: IntentDraft }>;
+  /** Dismiss a proposed Contract without creating a Goal. */
+  dismissIntent(sessionId: string, intentId: string): Promise<{ ok: boolean; error?: string; intent?: IntentDraft }>;
   /** Save an edited file's content back into the agent's file store. */
   saveFile(sessionId: string, path: string, content: string): Promise<{ ok: boolean; error?: string }>;
   /** Import an Office Open XML file. The original binary is persisted; Excel receives an extracted preview. */
@@ -102,6 +115,8 @@ export interface AgentClient {
   listSessions(): Promise<SessionSummary[]>;
   newSession(): Promise<{ ok: boolean; session?: SessionSummary; error?: string }>;
   getSession(id: string): Promise<{ ok: boolean; error?: string }>;
+  /** Permanently delete an idle Session and its Core-owned persistence directory. */
+  deleteSession(id: string): Promise<{ ok: boolean; error?: string }>;
   /** Stream of agent events. Returns an unsubscribe function. */
   subscribe(fn: (e: AgentEvent) => void): () => void;
 }
@@ -112,7 +127,8 @@ export function mapPiTool(name: string): string {
     case 'read': return 'read';
     case 'write':
     case 'edit': return 'write';
-    case 'bash': return 'code';
+    case 'bash':
+    case 'powershell': return 'code';
     case 'grep':
     case 'find':
     case 'ls': return 'search';

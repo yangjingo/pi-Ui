@@ -11,7 +11,6 @@ test('Core/PiRuntime enables Thinking before dispatching a /goal command', async
   subject.persistSessionRecord = () => {};
   subject.messages = [];
   subject.summary = { id: 'goal-test', title: 'Existing session', group: '今天', time: '刚刚', live: true };
-  subject.skillHarness = { inject: (text: string) => text };
   subject.on((event: any) => events.push(event));
   subject.session = {
     isStreaming: false,
@@ -165,6 +164,69 @@ test('Core/PiRuntime exposes Goal tool content and input/output in Traj', () => 
   assert.equal(output.goal.tokenBudget, null);
   assert.equal(output.remainingTokens, null);
   assert.ok(events.some(event => event.type === 'tool_end' && event.step.t === 'goal'));
+});
+
+test('Core/PiRuntime preserves multiline shell output and identifies PowerShell delegation', () => {
+  const subject = new PiRuntime() as any;
+  const events: any[] = [];
+  subject.steps = [];
+  subject.blocks = [];
+  subject.pendingFiles = new Map();
+  subject.fileHarness = { sync: () => ({ deleted: [], files: [] }) };
+  subject.on((event: any) => events.push(event));
+
+  subject.handle({
+    type: 'tool_execution_start',
+    toolCallId: 'shell-tool-1',
+    toolName: 'bash',
+    args: {
+      command: 'pwsh.exe -NoProfile -Command "Get-ChildItem"',
+    },
+  });
+  subject.handle({
+    type: 'tool_execution_update',
+    toolCallId: 'shell-tool-1',
+    toolName: 'bash',
+    partialResult: {
+      content: [{ type: 'text', text: 'w\u0000s\u0000l\u0000:\u0000 warning\r\n' }],
+    },
+  });
+  subject.handle({
+    type: 'tool_execution_end',
+    toolCallId: 'shell-tool-1',
+    toolName: 'bash',
+    isError: false,
+    result: {
+      content: [{ type: 'text', text: '第一行\r\n第二行\r\n' }],
+    },
+  });
+
+  assert.equal(subject.steps[0].t, 'code');
+  assert.equal(subject.steps[0].shell, 'powershell');
+  assert.equal(subject.steps[0].in, 'pwsh.exe -NoProfile -Command "Get-ChildItem"');
+  assert.equal(subject.steps[0].out, '第一行\n第二行\n');
+  assert.equal(subject.steps[0].outputEncoding, 'utf-8');
+  assert.equal(subject.steps[0].error, false);
+  assert.ok(events.some(event =>
+    event.type === 'tool_update' &&
+    event.step.out === 'wsl: warning\n' &&
+    event.step.outputEncoding === 'normalized'
+  ));
+
+  subject.handle({
+    type: 'tool_execution_start',
+    toolCallId: 'shell-tool-2',
+    toolName: 'bash',
+    args: { command: 'exit 1' },
+  });
+  subject.handle({
+    type: 'tool_execution_end',
+    toolCallId: 'shell-tool-2',
+    toolName: 'bash',
+    isError: true,
+    result: { content: [{ type: 'text', text: 'failed' }] },
+  });
+  assert.equal(subject.steps[1].error, true);
 });
 
 test('Core/PiRuntime projects completed Goal metrics through the existing Canvas Traj', () => {

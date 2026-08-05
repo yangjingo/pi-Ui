@@ -11,7 +11,7 @@ test('CLI parses one-command install options', () => {
     '--cwd',
     'project',
     '--host',
-    '0.0.0.0',
+    'localhost',
     '--port',
     '4317',
     '--no-open',
@@ -20,7 +20,7 @@ test('CLI parses one-command install options', () => {
   assert.deepEqual(options, {
     command: 'install',
     cwd: resolve(base, 'project'),
-    host: '0.0.0.0',
+    host: 'localhost',
     json: false,
     noOpen: true,
     port: 4317,
@@ -37,4 +37,6 @@ test('CLI rejects unknown commands and invalid ports', () => {
   assert.throws(() => parseCliArgs(['launch']), /Unknown command/);
   assert.throws(() => parseCliArgs(['start', '--port', '70000']), /Invalid port/);
   assert.throws(() => parseCliArgs(['start', '--host', 'localhost&whoami']), /Invalid host/);
+  assert.throws(() => parseCliArgs(['start', '--host', '0.0.0.0']), /only listens on/);
+  assert.equal(parseCliArgs(['start', '--host', '::1']).host, '::1');
 });
