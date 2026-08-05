@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   CONTEXT_SYSTEM_PROMPT,
+  CONTEXT_PROMPT_VERSION,
   CONTEXT_WORKSPACE_LINE,
   ContextHarness,
 } from '../../src/harness/context';
@@ -65,6 +66,44 @@ test('Harness/Context keeps tool order fixed and hashes schemas deterministicall
 
   assert.equal(same.fingerprint, baseline.fingerprint);
   assert.notEqual(changed.fingerprint, baseline.fingerprint);
+  assert.notEqual(
+    harness.prefixSnapshot('Stable system prompt', [...tools].reverse()).fingerprint,
+    baseline.fingerprint,
+  );
+});
+
+test('Harness/Context keeps Intent policy static and aligned with explicit Goal authorization', () => {
+  assert.equal(CONTEXT_PROMPT_VERSION, 5);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /Execute simple tasks directly/);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /at most three clarification rounds/);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /Call create_goal only after the user explicitly confirms the current Contract/);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /Never replace a non-complete Goal unless the user explicitly confirms/);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /On Windows, prefer the native powershell tool/);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /use bash only when POSIX shell semantics are specifically required/);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /call skill_package with the exact directory containing SKILL.md/);
+  assert.match(CONTEXT_SYSTEM_PROMPT, /require a completed @SKILL.md validation turn and discuss the final name/);
+  for (const mutable of [
+    'session-123',
+    'C:\\work\\project',
+    '2026-07-30',
+    'claude-sonnet',
+    '<intent_draft>',
+    '<goal_contract revision=',
+  ]) {
+    assert.equal(CONTEXT_SYSTEM_PROMPT.includes(mutable), false, mutable);
+  }
+
+  const harness = new ContextHarness();
+  const baseline = harness.prefixSnapshot(CONTEXT_SYSTEM_PROMPT, tools);
+  for (const turn of [
+    '<intent_draft revision="1">first</intent_draft>',
+    '<intent_draft revision="2">second</intent_draft>',
+    '<goal_contract hash="abc">confirmed</goal_contract>',
+    '<activated_skill name="docs">dynamic</activated_skill>',
+  ]) {
+    assert.equal(harness.prefixSnapshot(CONTEXT_SYSTEM_PROMPT, tools).fingerprint, baseline.fingerprint);
+    assert.equal(harness.assembleUserTurn(turn), turn);
+  }
 });
 
 test('Harness/Context reports provider cache usage and static-prefix drift', () => {

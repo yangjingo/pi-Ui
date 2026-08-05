@@ -16,6 +16,14 @@ import {
   GOAL_REPORT_SECTION_TIMELINE,
   GOAL_REPORT_TITLE,
 } from './prompts';
+export {
+  expectedAuditRequirementIds,
+  IntentHarness,
+  INTENT_ENTRY_TYPE,
+  MAX_CLARIFICATION_ROUNDS,
+  projectGoalObjective,
+} from './intent';
+export type { IntentResult } from './intent';
 
 const GOAL_ENTRY_TYPE = 'pi-codex-goal';
 const GOAL_HARNESS_ENTRY_TYPE = 'pi-ui-goal-harness';

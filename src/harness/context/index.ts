@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { CONTEXT_SYSTEM_PROMPT, CONTEXT_WORKSPACE_LINE } from './prompts';
+import { CONTEXT_PROMPT_VERSION, CONTEXT_SYSTEM_PROMPT, CONTEXT_WORKSPACE_LINE } from './prompts';
 
-export { CONTEXT_SYSTEM_PROMPT, CONTEXT_WORKSPACE_LINE };
+export { CONTEXT_PROMPT_VERSION, CONTEXT_SYSTEM_PROMPT, CONTEXT_WORKSPACE_LINE };
 
 export interface ContextToolDefinition {
   name: string;
@@ -109,7 +109,7 @@ export class ContextHarness {
     const toolsFingerprint = fingerprint(stableTools);
     return {
       fingerprint: fingerprint({
-        version: 1,
+        version: CONTEXT_PROMPT_VERSION,
         systemPrompt: stableSystemPrompt,
         tools: stableTools,
       }),

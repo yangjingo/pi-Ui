@@ -3,8 +3,28 @@
 // It deliberately contains no Pi SDK dependency and emits no transport events. PiRuntime owns
 // the agent loop; callers can replace or remove this harness without changing that loop.
 
+export { WorkspaceAccessPolicy } from './access-policy';
+export type { ToolAccessDecision, WorkspaceAccessContext, WorkspaceAccessMode } from './access-policy';
+
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, type Dirent } from 'node:fs';
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+  type Dirent,
+} from 'node:fs';
+import { zipSync } from 'fflate';
 
 import {
   fileTypeOf,
@@ -20,6 +40,9 @@ export const MAX_WORKSPACE_OFFICE_BYTES = 50 * 1024 * 1024;
 export const MAX_BINARY_BYTES = 100 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 export const MAX_CANVAS_RAW_BYTES = 20 * 1024 * 1024;
+export const MAX_ARCHIVE_FILES = 500;
+export const MAX_ARCHIVE_FILE_BYTES = 100 * 1024 * 1024;
+export const MAX_ARCHIVE_TOTAL_BYTES = 256 * 1024 * 1024;
 
 const CANVAS_BINARY_CONTENT_TYPES: Record<string, string> = {
   pdf: 'application/pdf',
@@ -69,6 +92,8 @@ export type HarnessSync = { deleted: string[]; files: HarnessFileEvent[] };
 export type FileWriteResult = { ok: boolean; file?: FileNode; content?: string; error?: string };
 export type FileRenameResult = FileWriteResult & { path?: string; previousPath?: string };
 export type FileDeleteResult = { ok: boolean; path?: string; tracked?: boolean; error?: string };
+export type FileReadResult = { ok: boolean; data?: Buffer; contentType?: string; path?: string; error?: string };
+export type FileArchiveResult = { ok: boolean; data?: Buffer; files?: string[]; error?: string };
 export interface AgentOutputProjection {
   text: string;
   blocks: AgentContentBlock[];
@@ -78,6 +103,14 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function maxFileBytes(name: string): number {
+  const type = fileTypeOf(name);
+  if (type === 'binary') return MAX_BINARY_BYTES;
+  if (isOfficeFile(name) || type === 'pdf') return MAX_WORKSPACE_OFFICE_BYTES;
+  if (type === 'png') return MAX_IMAGE_BYTES;
+  return MAX_WORKSPACE_FILE_BYTES;
 }
 
 function isWorkspaceTextFile(name: string): boolean {
@@ -152,8 +185,7 @@ function artifactForPath(path: string): Artifact {
 
 function safeWorkspacePreview(name: string, abs: string, st: { size: number; mtimeMs: number }, allowPreview = true): string {
   const previewable = isWorkspaceTextFile(name) || isOfficeWorkbookFile(name);
-  const ft = fileTypeOf(name);
-  const limit = ft === 'binary' ? MAX_BINARY_BYTES : (isOfficeFile(name) || ft === 'pdf') ? MAX_WORKSPACE_OFFICE_BYTES : ft === 'png' ? MAX_IMAGE_BYTES : MAX_WORKSPACE_FILE_BYTES;
+  const limit = maxFileBytes(name);
   if (!allowPreview || !previewable || st.size > limit) return binaryFileNotice(name, st.size, st.mtimeMs);
   try {
     const raw = readFileSync(abs);
@@ -211,8 +243,7 @@ export class FileHarness {
         try {
           const st = statSync(abs);
           const previewable = isWorkspaceTextFile(entry.name) || isOfficeWorkbookFile(entry.name);
-          const ft2 = fileTypeOf(entry.name);
-          const limit = ft2 === 'binary' ? MAX_BINARY_BYTES : (isOfficeFile(entry.name) || ft2 === 'pdf') ? MAX_WORKSPACE_OFFICE_BYTES : ft2 === 'png' ? MAX_IMAGE_BYTES : MAX_WORKSPACE_FILE_BYTES;
+          const limit = maxFileBytes(entry.name);
           const mayRead = previewable && st.size <= limit && totalBytes + st.size <= MAX_WORKSPACE_TOTAL_BYTES;
           next.set(rel.replace(/\\/g, '/'), safeWorkspacePreview(entry.name, abs, st, mayRead));
           if (mayRead) totalBytes += st.size;
@@ -419,6 +450,130 @@ export class FileHarness {
       return { ok: true, data: readFileSync(target.abs), contentType: CANVAS_BINARY_CONTENT_TYPES[ext] || 'application/octet-stream' };
     } catch (e: any) {
       return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  private downloadableFile(path: string): {
+    abs: string;
+    rel: string;
+    size: number;
+    mtimeMs: number;
+    ctimeMs: number;
+    dev: number;
+    ino: number;
+  } {
+    const target = this.resolveFile(path);
+    if (target.rel.split('/').some(part => part.startsWith('.'))) throw new Error('不允许下载隐藏文件');
+    const link = lstatSync(target.abs);
+    if (link.isSymbolicLink()) throw new Error('不允许下载符号链接');
+    if (!link.isFile()) throw new Error('文件不存在');
+    const rootReal = realpathSync(this.root);
+    const fileReal = realpathSync(target.abs);
+    const realRel = relative(rootReal, fileReal).replace(/\\/g, '/');
+    if (!realRel || realRel === '..' || realRel.startsWith('../') || isAbsolute(realRel)) {
+      throw new Error('文件必须位于当前工作目录内');
+    }
+    const limit = MAX_ARCHIVE_FILE_BYTES;
+    if (link.size > limit) throw new Error(`文件超过下载大小限制（${Math.floor(limit / (1024 * 1024))}MB）`);
+    return {
+      abs: target.abs,
+      rel: target.rel,
+      size: link.size,
+      mtimeMs: link.mtimeMs,
+      ctimeMs: link.ctimeMs,
+      dev: link.dev,
+      ino: link.ino,
+    };
+  }
+
+  /** Open once, verify the opened object against the authorized path snapshot, read from that
+   * same descriptor, then verify it again. O_NOFOLLOW closes the final-component symlink race
+   * where the platform supports it; dev/ino also catches parent replacement between checks. */
+  private readStableDownloadFile(
+    target: ReturnType<FileHarness['downloadableFile']>,
+    action: '下载' | '归档',
+  ): Buffer {
+    const noFollow = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+    let fd: number | null = null;
+    try {
+      fd = openSync(target.abs, fsConstants.O_RDONLY | noFollow);
+      const before = fstatSync(fd);
+      if (!before.isFile()) throw new Error('文件不存在');
+      if (
+        before.dev !== target.dev ||
+        before.ino !== target.ino ||
+        before.size !== target.size ||
+        before.mtimeMs !== target.mtimeMs ||
+        before.ctimeMs !== target.ctimeMs
+      ) {
+        throw new Error(`文件在${action}准备期间发生变化${action === '归档' ? `：${target.rel}` : '，请重试'}`);
+      }
+      const data = readFileSync(fd);
+      const after = fstatSync(fd);
+      if (
+        after.dev !== before.dev ||
+        after.ino !== before.ino ||
+        after.size !== before.size ||
+        after.mtimeMs !== before.mtimeMs ||
+        after.ctimeMs !== before.ctimeMs ||
+        data.length !== before.size
+      ) {
+        throw new Error(`文件在${action}准备期间发生变化${action === '归档' ? `：${target.rel}` : '，请重试'}`);
+      }
+      return data;
+    } finally {
+      if (fd !== null) closeSync(fd);
+    }
+  }
+
+  readDownload(path: string): FileReadResult {
+    try {
+      const target = this.downloadableFile(path);
+      const data = this.readStableDownloadFile(target, '下载');
+      const ext = target.rel.slice(target.rel.lastIndexOf('.') + 1).toLowerCase();
+      return {
+        ok: true,
+        data,
+        path: target.rel,
+        contentType: CANVAS_BINARY_CONTENT_TYPES[ext] || 'application/octet-stream',
+      };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || String(error) };
+    }
+  }
+
+  archive(paths: ReadonlyArray<string>): FileArchiveResult {
+    try {
+      const unique = new Map<string, ReturnType<FileHarness['downloadableFile']>>();
+      const collisions = new Map<string, string>();
+      for (const rawPath of paths) {
+        const target = this.downloadableFile(String(rawPath || ''));
+        const collisionKey = target.rel.toLocaleLowerCase('en-US');
+        const previous = collisions.get(collisionKey);
+        if (previous && previous !== target.rel) {
+          throw new Error(`归档路径大小写冲突：${previous} / ${target.rel}`);
+        }
+        collisions.set(collisionKey, target.rel);
+        unique.set(target.rel, target);
+      }
+      const files = [...unique.values()].sort((a, b) => a.rel.localeCompare(b.rel, 'en-US'));
+      if (!files.length) throw new Error('请至少选择一个文件');
+      if (files.length > MAX_ARCHIVE_FILES) throw new Error(`一次最多下载 ${MAX_ARCHIVE_FILES} 个文件`);
+      const total = files.reduce((sum, file) => sum + file.size, 0);
+      if (total > MAX_ARCHIVE_TOTAL_BYTES) {
+        throw new Error(`归档总大小不能超过 ${MAX_ARCHIVE_TOTAL_BYTES / (1024 * 1024)}MB`);
+      }
+      const entries: Record<string, Uint8Array> = {};
+      for (const file of files) {
+        entries[file.rel.replace(/\\/g, '/')] = this.readStableDownloadFile(file, '归档');
+      }
+      return {
+        ok: true,
+        data: Buffer.from(zipSync(entries, { level: 6 })),
+        files: files.map(file => file.rel),
+      };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || String(error) };
     }
   }
 
