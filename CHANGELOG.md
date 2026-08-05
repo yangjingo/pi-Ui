@@ -5,6 +5,50 @@ Pi UI 的重要变更记录在此文件中。
 版本格式遵循 [Semantic Versioning](https://semver.org/)，日期使用
 `YYYY-MM-DD`。
 
+## [0.2.0] - 2026-08-05
+
+该版本把 Pi UI 收敛为仅本地监听、桌面优先且可集成的 Agent Workspace，并完成
+Session 隔离、Goal/Skill/File Harness、Canvas 预览和主题系统的系统性升级。
+
+### 新增
+
+- Session Runtime 按 Session ID 独立运行，支持后台执行、跨 Tab 恢复、未读完成提示、永久删除
+  保护，以及累计多轮对话的 Cache 命中率统计。
+- 新增 User Intent Contract：复杂 Goal 在执行前完成澄清、确认、替换保护与完成证据审计；
+  普通任务继续直接执行。
+- Skill Harness 支持 SDK 定位的渐进披露、Workspace 环境复用、URL/ZIP 分阶段安装，以及从
+  Trajectory 和 Tool 调用生成 Session 内待验证 Skill 草稿，验证后再贡献至 Skill Hub。
+- File Harness 新增 Session 优先搜索、授权路径门禁、安全 ZIP、目录上传、批量选择、重命名、
+  删除和一致的直接下载流程。
+- 新增 Dark、ZenGrid、AIDA 启动主题与中英文 typed catalog；品牌与主题解耦，并加入 AIDA/Pi
+  欢迎页文案、单色语义图标和克制的等待动效。
+- 项目级设计、交互、动画、GSAP、shadcn 与图表 Skills 固化在 `.agents/skills/`，并由
+  `AGENTS.md` 约束其使用边界。
+
+### 变更
+
+- Canvas 默认使用可恢复的半屏分栏，全屏改为显式操作；Files、Artifact、Trajectory 和最终产物
+  统一外层预览结构，同时保留各 renderer 的内容语义。
+- 优化复杂 HTML、Mermaid、Excalidraw、Skill Hub 和模型配置的懒加载、预取、缓存、骨架与错误
+  过渡，并支持桌面浏览器缩放及上下高度变化下的流式双栏布局。
+- Agent Loop 删除重复 Thinking、Tool 状态和完成标签，恢复运行头像与 Tool 图标动效；Goal
+  Session 使用克制结果视图，普通 Session 保留可扫描 Trajectory。
+- PowerShell 成为 Windows 原生 Shell Tool，并修复中文、控制字符、截断历史输出和 Bash/
+  PowerShell 分类。
+- 将 Slash Context、Source Module 和 Model Configuration 合并进 `docs/ARCHITECTURE.md`；将
+  Context、Session、Intent、Canvas、Theme 与 Skill/File 合同合并到 `docs/goals/` 并记录冲突裁决。
+- 产品范围明确为桌面端：移除手机、触屏、coarse-pointer、移动抽屉和移动导航兼容层。
+
+### 安全与修复
+
+- CLI 和生产服务器只允许 `127.0.0.1`、`localhost` 或 `::1`，浏览器 API 拒绝跨来源请求。
+- 为 JSON 与 Skill 导入请求增加体积上限；加强 Session/File realpath、符号链接、竞态替换和
+  ZIP 路径边界。
+- FIG 文本改为 React 转义渲染，Mermaid 改为严格安全级别，避免 Workspace 文件触发脚本。
+- 覆盖存在安全公告的传递依赖版本；生产依赖审计不再报告已知漏洞。
+- 修复 Canvas 高度不足、Files 菜单溢出、缩放横向滚动、流式预览宽度不一致，以及预览加载
+  失败缺少可访问反馈的问题。
+
 ## [0.1.1] - 2026-07-28
 
 ### 修复
@@ -63,5 +107,6 @@ Pi UI 的重要变更记录在此文件中。
 - 移除独立的产物 Manifest 视觉组件；文件产物直接使用现有 Agent Flow 步骤。
 - 移除 Agent 输出卡片下无意义的编辑操作，以及 Goal 专属的重复状态组件。
 
+[0.2.0]: https://github.com/yangjingo/pi-Ui/compare/v0.1.0...v0.2.0
 [0.1.1]: https://github.com/yangjingo/pi-Ui/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yangjingo/pi-Ui/releases/tag/v0.1.0

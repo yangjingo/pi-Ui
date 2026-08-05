@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  brace-expansion: 5.0.9
+  undici: 8.9.0
+
 importers:
 
   .:
@@ -20,6 +24,9 @@ importers:
       pi-codex-goal:
         specifier: 0.1.38
         version: 0.1.38(@earendil-works/pi-ai@0.80.10(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.80.10(ws@8.21.1)(zod@4.4.3))(typebox@1.1.38)
+      typebox:
+        specifier: ^1.1.38
+        version: 1.1.38
     devDependencies:
       '@playwright/test':
         specifier: ^1.62.0
@@ -1070,9 +1077,9 @@ packages:
   bowser@2.14.1:
     resolution: {integrity: sha512-tzPjzCxygAKWFOJP011oxFHs57HzIhOEracIgAePE4pqB3LikALKnSzUyU4MGs9/iCEUuHlAJTjTc5M+u7YEGg==}
 
-  brace-expansion@5.0.7:
-    resolution: {integrity: sha512-7oFy703dxfY3/NLxC1fh2SUCQ0H9rmAY+5EpDVfXjUTTs+HEwR2nYaqLv+GWcTsumwxPfiz6CzCNkwXwBUwqCA==}
-    engines: {node: 18 || 20 || >=22}
+  brace-expansion@5.0.9:
+    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
+    engines: {node: 20 || >=22}
 
   browserslist@4.28.6:
     resolution: {integrity: sha512-FQBYNK15VMslhLHpA7+n+n1GOlF1kId2xcCg7/j95f24AOF6VDYMNH4mFxF7KuaTdv627faazpOAjFzMrfJOUw==}
@@ -1697,8 +1704,8 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@8.5.0:
-    resolution: {integrity: sha512-xamtWoB1EshgjpmlXd7GGm2VfdDtw1+rD8uhry8pSNW3If6S8E0m2T2+orSKeZXEn/aPJMviCpDBA65WJt8zhg==}
+  undici@8.9.0:
+    resolution: {integrity: sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==}
     engines: {node: '>=22.19.0'}
 
   update-browserslist-db@1.2.3:
@@ -2177,7 +2184,7 @@ snapshots:
       proper-lockfile: 4.1.2
       semver: 7.8.0
       typebox: 1.1.38
-      undici: 8.5.0
+      undici: 8.9.0
       yaml: 2.9.0
     optionalDependencies:
       '@mariozechner/clipboard': 0.3.9
@@ -2790,7 +2797,7 @@ snapshots:
 
   bowser@2.14.1: {}
 
-  brace-expansion@5.0.7:
+  brace-expansion@5.0.9:
     dependencies:
       balanced-match: 4.0.4
 
@@ -3277,7 +3284,7 @@ snapshots:
 
   minimatch@10.2.5:
     dependencies:
-      brace-expansion: 5.0.7
+      brace-expansion: 5.0.9
 
   minipass@7.1.3: {}
 
@@ -3469,7 +3476,7 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  undici@8.5.0: {}
+  undici@8.9.0: {}
 
   update-browserslist-db@1.2.3(browserslist@4.28.6):
     dependencies:
