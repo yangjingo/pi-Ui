@@ -31,10 +31,59 @@ function loadMermaid(): Promise<Mermaid> {
   mermaidPromise = import('mermaid')
     .then(module => {
       const mermaid = module.default;
+      const theme = typeof document === 'undefined'
+        ? 'dark'
+        : document.documentElement.dataset.theme;
+      const themeVariables = theme === 'aida' ? {
+        background: '#f6f8fb',
+        primaryColor: '#ffffff',
+        primaryTextColor: '#0f172a',
+        primaryBorderColor: '#cbd5e1',
+        lineColor: '#64748b',
+        secondaryColor: '#eef1fc',
+        tertiaryColor: '#eef2f7',
+        clusterBkg: '#fafbfc',
+        clusterBorder: '#cbd5e1',
+        edgeLabelBackground: '#f6f8fb',
+        noteBkgColor: '#eef1fc',
+        noteTextColor: '#1e34a8',
+        noteBorderColor: '#3551d8',
+      } : theme === 'zengrid' ? {
+        background: '#FAF9F6',
+        primaryColor: '#FFFFFF',
+        primaryTextColor: '#57534E',
+        primaryBorderColor: '#D6D3CE',
+        lineColor: '#78716C',
+        secondaryColor: '#F5F4F1',
+        tertiaryColor: '#FAF9F6',
+        clusterBkg: '#FAF9F6',
+        clusterBorder: '#D6D3CE',
+        edgeLabelBackground: '#FAF9F6',
+        noteBkgColor: '#F5F4F1',
+        noteTextColor: '#57534E',
+        noteBorderColor: '#D6D3CE',
+      } : {
+        background: '#171717',
+        primaryColor: '#202020',
+        primaryTextColor: '#E5E5E5',
+        primaryBorderColor: '#505050',
+        lineColor: '#858585',
+        secondaryColor: '#171717',
+        tertiaryColor: '#121212',
+        clusterBkg: '#171717',
+        clusterBorder: '#505050',
+        edgeLabelBackground: '#171717',
+        noteBkgColor: '#242424',
+        noteTextColor: '#E5E5E5',
+        noteBorderColor: '#505050',
+      };
       mermaid.initialize({
         startOnLoad: false,
-        theme: 'neutral',
-        securityLevel: 'loose',
+        theme: 'base',
+        themeVariables,
+        // Session files and Agent output are untrusted input. Mermaid's strict mode keeps
+        // labels useful while preventing diagram markup from becoming same-origin HTML.
+        securityLevel: 'strict',
         fontFamily: 'inherit',
         deterministicIds: true,
       });

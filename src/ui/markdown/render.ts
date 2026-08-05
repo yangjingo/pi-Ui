@@ -1,4 +1,6 @@
 import { esc } from '../language/format';
+import { t } from '../language/runtime';
+import { highlightCode } from '../syntax/highlight';
 
 export function renderMd(src: string): string {
   const inline = (s: string) =>
@@ -32,11 +34,14 @@ export function renderMd(src: string): string {
       i++;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
       if (i < lines.length) i++; // consume closing fence
-      const code = esc(buf.join('\n'));
+      const source = buf.join('\n');
+      const code = esc(source);
       if (lang.toLowerCase() === 'mermaid') {
         html += `<div class="mermaid">${code}</div>`;
       } else {
-        html += `<pre class="code-block"><code${lang ? ` class="lang-${esc(lang)}"` : ''}>${code}</code></pre>`;
+        const highlighted = highlightCode(source, lang);
+        const classes = [`lang-${esc(highlighted.language)}`, highlighted.highlighted ? 'is-highlighted' : 'is-plain'].join(' ');
+        html += `<pre class="code-block"><code class="${classes}">${highlighted.html}</code>${highlighted.truncated ? `<small class="syntax-fallback">${esc(t('renderer.largePlainText'))}</small>` : ''}</pre>`;
       }
       continue;
     }

@@ -8,15 +8,17 @@ export const ICONS: Record<string, string> = {
   spark: '<path d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 15.6l-1.7-4.6L6 9.3l4.3-1.7L12 3Z"/>',
   brain: '<path d="M9 3a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3 2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z"/><path d="M15 3a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3 2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>',
   share: '<path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v13"/>',
-  paperclip: '<path d="M21 11.5 12 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10 18a2 2 0 0 1-3-3l7.5-7.5"/>',
   download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
   send: '<path d="M12 19V5M6 11l6-6 6 6"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>',
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/>',
+  'text-file': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
   grid: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
   frame: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
+  'web-preview': '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M10 12l-2 2 2 2M14 12l2 2-2 2"/><circle cx="6" cy="6.5" r=".5" fill="currentColor" stroke="none"/>',
   code: '<path d="m8 6-6 6 6 6M16 6l6 6-6 6"/>',
+  braces: '<path d="M9 4H7a2 2 0 0 0-2 2v3a3 3 0 0 1-2 3 3 3 0 0 1 2 3v3a2 2 0 0 0 2 2h2M15 4h2a2 2 0 0 1 2 2v3a3 3 0 0 0 2 3 3 3 0 0 0-2 3v3a2 2 0 0 1-2 2h-2"/>',
   chevron: '<path d="m6 9 6 6 6-6"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
@@ -34,6 +36,8 @@ export const ICONS: Record<string, string> = {
   cpu: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>',
   settings: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3"/>',
   panel: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/>',
+  maximize: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>',
+  minimize: '<path d="M8 3v5H3M16 3v5h5M8 21v-5H3M16 21v-5h5"/>',
   blocks: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   presentation: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21l4-4 4 4M8 9h8M8 12h5"/>',
   trend: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
@@ -53,9 +57,15 @@ export function Icon({ name, className = '' }: { name: string; className?: strin
       strokeWidth={1.7}
       strokeLinecap="round"
       strokeLinejoin="round"
+      data-icon={name}
       dangerouslySetInnerHTML={{ __html: ICONS[name] || '' }}
     />
   );
+}
+
+/** One visual contract for every user-facing file intake action. */
+export function FileUploadIcon({ className = '' }: { className?: string }) {
+  return <Icon name="file" className={className} />;
 }
 
 /** Shared Pi identity mark. Functional controls continue to use the icon set above. */
@@ -69,7 +79,12 @@ export function PiIcon({ className = '' }: { className?: string }) {
 }
 
 export function fileIcon(type: FileType | string): string {
-  return ({ fig: 'frame', md: 'file', doc: 'file', png: 'image', sheet: 'grid', slides: 'presentation', html: 'code', code: 'code', json: 'code', mermaid: 'route', excalidraw: 'frame', pdf: 'file', binary: 'file', folder: 'folder' } as Record<string, string>)[type as string] || 'file';
+  return ({ fig: 'frame', md: 'text-file', doc: 'text-file', png: 'image', sheet: 'grid', slides: 'presentation', html: 'web-preview', code: 'code', json: 'braces', mermaid: 'route', excalidraw: 'frame', pdf: 'file', binary: 'file', folder: 'folder' } as Record<string, string>)[type as string] || 'file';
+}
+
+/** Final artifacts describe their Canvas destination as well as their file format. */
+export function artifactIcon(type: FileType | string): string {
+  return fileIcon(type);
 }
 
 export function trajIcon(t: string): string {

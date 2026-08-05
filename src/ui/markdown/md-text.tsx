@@ -11,10 +11,39 @@ import {
 } from './mermaid-runtime';
 import { renderMd } from './render';
 
+const MAX_MARKDOWN_CACHE_ENTRIES = 12;
+const MAX_MARKDOWN_CACHE_CHARS = 2_000_000;
+const markdownCache = new Map<string, string>();
+let markdownCacheChars = 0;
+
+function cachedMarkdown(source: string): string {
+  const cached = markdownCache.get(source);
+  if (cached != null) {
+    markdownCache.delete(source);
+    markdownCache.set(source, cached);
+    return cached;
+  }
+  const html = renderMd(source);
+  if (source.length > MAX_MARKDOWN_CACHE_CHARS) return html;
+  while (markdownCache.size >= MAX_MARKDOWN_CACHE_ENTRIES || markdownCacheChars + source.length > MAX_MARKDOWN_CACHE_CHARS) {
+    const oldest = markdownCache.keys().next().value;
+    if (oldest == null) break;
+    markdownCache.delete(oldest);
+    markdownCacheChars -= oldest.length;
+  }
+  markdownCache.set(source, html);
+  markdownCacheChars += source.length;
+  return html;
+}
+
+export function prewarmMarkdown(text: string): void {
+  cachedMarkdown(text || '');
+}
+
 export function MdText({ text, className, testId }: { text: string; className?: string; testId?: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const scope = `markdown-mermaid-${useId().replace(/:/g, '')}`;
-  const html = useMemo(() => renderMd(text || ''), [text]);
+  const html = useMemo(() => cachedMarkdown(text || ''), [text]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
