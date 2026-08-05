@@ -5,13 +5,16 @@ export type { View, WorkspaceCtx } from './state/workspace-context';
 export { filterFileTree, listFiles, parentPath } from './files/tree';
 export { basename, buildFileTree, countFiles, findFileInSession, parseCSV, pathOf } from './files/workspace';
 export { useFileImport } from './files/use-file-import';
-export type { FileImportController, FileImportProgress } from './files/use-file-import';
+export type { FileImportController, FileImportNotice, FileImportProgress } from './files/use-file-import';
 export {
+  fetchWorkspaceArchive,
   fetchWorkspaceFileBlob,
   importWorkspaceFile,
+  saveBlobAs,
   subscribeWorkspaceEvents,
   workspaceFileType,
   workspaceFileUrl,
+  WorkspaceFileRequestError,
 } from './files/file-service';
 export type { ImportedWorkspaceFile } from './files/file-service';
 export {
@@ -23,7 +26,7 @@ export {
 } from '../harness/file';
 export type { OfficeWorkbookPreview } from '../harness/file';
 
-export { deleteSkill, refreshSkills, saveSkill, useSkills, createSkillFromTurn } from './skills/store';
+export { createSkillFromTurn, deleteSkill, loadSkill, refreshSkills, saveSkill, useSkills } from './skills/store';
 export { makeSkillMd, skillSlashCommand } from './skills/model';
 export type { Skill, SkillDraft } from './skills/model';
 

@@ -5,9 +5,13 @@ export interface Skill {
   files: Record<string, string>;
   enabled: boolean;
   source: 'workspace';
+  fileCount: number;
+  rootPath: string;
+  skillPath: string;
+  commandName: string;
 }
 
-export type SkillDraft = Omit<Skill, 'id' | 'source'> & { id?: string };
+export type SkillDraft = Pick<Skill, 'name' | 'desc' | 'files' | 'enabled'> & { id?: string };
 
 export function skillSlashCommand(skill: Pick<Skill, 'name'>): string {
   return `/${skill.name.trim()}`;

@@ -49,13 +49,50 @@ export function workspaceFileUrl(sessionId: string, path: string, download = fal
   return `/api/file/raw?${query.toString()}`;
 }
 
+export class WorkspaceFileRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'WorkspaceFileRequestError';
+  }
+}
+
 export async function fetchWorkspaceFileBlob(sessionId: string, path: string, signal?: AbortSignal): Promise<Blob> {
   const response = await fetch(workspaceFileUrl(sessionId, path), { signal });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { error?: string } | null;
-    throw new Error(payload?.error || '文件无法加载');
+    throw new WorkspaceFileRequestError(payload?.error || '文件无法加载', response.status);
   }
   return response.blob();
+}
+
+export async function fetchWorkspaceArchive(sessionId: string, paths: string[], signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch('/api/files/archive', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, paths }),
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    throw new WorkspaceFileRequestError(payload?.error || '无法创建 ZIP', response.status);
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const fallback = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  let filename = 'workspace-files.zip';
+  try { filename = decodeURIComponent(encoded || fallback || filename); } catch { /* use fallback */ }
+  return { blob: await response.blob(), filename };
+}
+
+export function saveBlobAs(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function subscribeWorkspaceEvents(listener: (event: AgentEvent) => void): () => void {

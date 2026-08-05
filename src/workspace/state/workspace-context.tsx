@@ -58,6 +58,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         connectionStatus: clientState.connectionStatus,
         workspaceMode: 'disk' as const,
       };
+  const activeSessionHydrated = !!activeSessionId && clientState.sessions[activeSessionId]?.workspaceReady === true;
 
   const [activeTab, setActiveTabState] = useState<WorkspaceTab>('files');
   const [canvasTab, setCanvasTab] = useState<string | null>(null);
@@ -65,10 +66,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeStep, setActiveStep] = useState<StepRef | null>(null);
   const [activeTurn, setActiveTurn] = useState<TurnRef | null>(null);
   const [wsOpen, setWsOpenState] = useState(false);
+  const [canvasFocused, setCanvasFocusedState] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editDirty, setEditDirty] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editSaveError, setEditSaveError] = useState<string | null>(null);
+  const [fileSelectionMode, setFileSelectionModeState] = useState(false);
+  const [selectedFilePaths, setSelectedFilePathsState] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [view, setViewState] = useState<View>('chat');
   const [flashMsg, setFlashMsg] = useState<number | null>(null);
@@ -166,7 +170,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [refreshSessions]);
 
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (!activeSessionId || activeSessionHydrated) return;
     let active = true;
     void agentClient.getSession(activeSessionId).then(result => {
       if (!result.ok && active) {
@@ -175,13 +179,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
     });
     return () => { active = false; };
-  }, [activeSessionId]);
+  }, [activeSessionId, activeSessionHydrated]);
 
   useEffect(() => {
     const onPopState = () => {
       const id = sessionIdFromLocation();
       setActiveSessionId(id);
-      if (id) void agentClient.getSession(id);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -205,6 +208,43 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     id: summary.id, title: summary.title, group: summary.group, time: summary.time,
     live: !!st.loading, messages, files, openTabs,
   }), [summary, st.loading, messages, files, openTabs]);
+
+  useEffect(() => {
+    setFileSelectionModeState(false);
+    setSelectedFilePathsState([]);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    const available = new Set(st.fileList.map(file => file.path || file.name));
+    setSelectedFilePathsState(current => {
+      const next = current.filter(path => available.has(path));
+      return next.length === current.length ? current : next;
+    });
+  }, [st.fileList]);
+
+  const setFileSelectionMode = useCallback((on: boolean) => {
+    setFileSelectionModeState(on);
+    if (!on) setSelectedFilePathsState([]);
+  }, []);
+
+  const setSelectedFilePaths = useCallback((paths: string[]) => {
+    setSelectedFilePathsState([...new Set(paths.filter(Boolean))]);
+  }, []);
+
+  const toggleFileSelection = useCallback((paths: string[]) => {
+    const normalized = [...new Set(paths.filter(Boolean))];
+    setSelectedFilePathsState(current => {
+      const next = new Set(current);
+      const everySelected = normalized.every(path => next.has(path));
+      for (const path of normalized) {
+        if (everySelected) next.delete(path);
+        else next.add(path);
+      }
+      return [...next];
+    });
+  }, []);
+
+  const clearFileSelection = useCallback(() => setSelectedFilePathsState([]), []);
 
   const getFileContent = useCallback((path?: string) => (path ? (st.contents[path] ?? '') : ''), [st.contents]);
   const getEditBuffer = useCallback((path?: string) => bufferRef.current ?? getFileContent(path), [getFileContent]);
@@ -287,6 +327,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveTabState(shouldPreview ? 'canvas' : saved.activeTab);
     setClosedFolders(new Set(saved.closedFolders));
     setWsOpenState(false);
+    setCanvasFocusedState(false);
     setActiveStep(null);
     setActiveTurn(null);
   }, []);
@@ -372,6 +413,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setOpenTabs(prev => prev.includes(path) ? prev : [...prev, path]);
       if (!editing) {
         setWsOpenState(true);
+        setCanvasFocusedState(false);
         setActiveStep(null);
         setActiveTurn(null);
         setCanvasTab(path);
@@ -413,6 +455,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (editing && !(await commitEdit())) return false;
     const file = findFileInSession(active, name) || findFileInSession(active, basename(name));
     setWsOpenState(true);
+    setCanvasFocusedState(false);
     if (!file) {
       setActiveStep(null);
       setActiveTurn(null);
@@ -478,6 +521,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const resolved = result.path || nextPath;
     setOpenTabs(prev => prev.map(tab => tab === path ? resolved : tab));
     setCanvasTab(cur => cur === path ? resolved : cur);
+    setSelectedFilePathsState(current => current.map(item => item === path ? resolved : item));
     return { ok: true, path: resolved };
   }, [activeSessionId, editing, canvasTab, commitEdit]);
 
@@ -488,6 +532,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const result = await agentClient.deleteFile(activeSessionId, path);
     if (!result.ok) return result;
     const remaining = openTabs.filter(tab => tab !== path);
+    setSelectedFilePathsState(current => current.filter(item => item !== path));
     setOpenTabs(remaining);
     setCanvasTab(cur => cur === path
       ? (remaining[Math.min(Math.max(index, 0), remaining.length - 1)] ?? null)
@@ -495,9 +540,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   }, [activeSessionId, editing, canvasTab, cancelEdit, openTabs]);
 
+  const refreshWorkspaceFiles = useCallback(async (): Promise<boolean> => {
+    if (!activeSessionId) return false;
+    const result = await agentClient.getSession(activeSessionId);
+    return result.ok;
+  }, [activeSessionId]);
+
   const showStep = useCallback(async (mi: number, si: number): Promise<boolean> => {
     if (editing && !(await commitEdit())) return false;
     setWsOpenState(true);
+    setCanvasFocusedState(false);
     const msg = active.messages[mi];
     if (!msg?.traj) return false;
     setActiveTurn(null);
@@ -514,6 +566,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveStep(null);
     setCanvasTab(null);
     setWsOpenState(true);
+    setCanvasFocusedState(false);
     setActiveTabState('canvas');
     return true;
   }, [editing, commitEdit]);
@@ -521,6 +574,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const setActiveTab = useCallback(async (tab: WorkspaceTab): Promise<boolean> => {
     if (tab !== activeTab && editing && !(await commitEdit())) return false;
     setActiveTabState(tab);
+    setCanvasFocusedState(false);
     return true;
   }, [activeTab, editing, commitEdit]);
 
@@ -535,6 +589,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (open === wsOpen) return true;
     if (!open && editing && !(await commitEdit())) return false;
     setWsOpenState(open);
+    if (!open) setCanvasFocusedState(false);
     return true;
   }, [wsOpen, editing, commitEdit]);
 
@@ -550,33 +605,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveStep(null);
     setActiveTurn(null);
     setWsOpenState(true);
+    setCanvasFocusedState(false);
     setActiveTabState('files');
     return true;
   }, [editing, commitEdit]);
-
-  // Context-aware ← →: between agent turns, between steps of a turn, or between open files.
-  const navCanvas = useCallback((dir: -1 | 1) => {
-    if (activeTurn) {
-      const agentIdx = active.messages
-        .map((m, i) => (m.role === 'agent' ? i : -1)).filter(i => i >= 0);
-      const cur = agentIdx.indexOf(activeTurn.mi);
-      const next = cur + dir;
-      if (next >= 0 && next < agentIdx.length) setActiveTurn({ mi: agentIdx[next] });
-      return;
-    }
-    if (activeStep) {
-      const traj = active.messages[activeStep.mi]?.traj ?? [];
-      if (!traj.length) return;
-      const si = Math.max(0, Math.min(traj.length - 1, activeStep.si + dir));
-      setActiveStep({ mi: activeStep.mi, si });
-      return;
-    }
-    if (openTabs.length > 1 && canvasTab) {
-      const i = openTabs.indexOf(canvasTab);
-      const next = (i + dir + openTabs.length) % openTabs.length;
-      setCanvasTab(openTabs[next]);
-    }
-  }, [activeTurn, activeStep, active.messages, openTabs, canvasTab]);
 
   const toggleFolder = useCallback((node: FileNode) => {
     const key = node.path || node.name;
@@ -633,16 +665,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const { modelInput, references, sentIds } = prepareAgentMessage(text);
     void (async () => {
       let sessionId = activeSessionId;
+      let createdSession = false;
       if (!sessionId) {
         const created = await agentClient.newSession();
         if (!created.ok || !created.session) return;
         sessionId = created.session.id;
+        createdSession = true;
         setActiveSessionId(sessionId);
         writeSessionLocation(sessionId);
-        await refreshSessions();
       }
       const accepted = await agentClient.prompt(sessionId, modelInput, text, references);
       if (accepted) clearSentChanges(sentIds);
+      if (createdSession) void refreshSessions();
     })();
   }, [activeSessionId, prepareAgentMessage, clearSentChanges, refreshSessions]);
 
@@ -661,6 +695,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (accepted) clearSentChanges(sentIds);
     });
   }, [activeSessionId, prepareAgentMessage, clearSentChanges]);
+
+  const confirmIntent = useCallback(async (replaceExisting = false) => {
+    const intent = st.intent;
+    if (!activeSessionId || !intent?.contractHash) return { ok: false, error: '没有可确认的 Goal Contract' };
+    return agentClient.confirmIntent(activeSessionId, {
+      intentId: intent.intentId,
+      revision: intent.revision,
+      contractHash: intent.contractHash,
+      replaceExisting,
+    });
+  }, [activeSessionId, st.intent]);
+
+  const dismissIntent = useCallback(async () => {
+    const intent = st.intent;
+    if (!activeSessionId || !intent) return { ok: false, error: '没有可取消的 Goal Contract' };
+    return agentClient.dismissIntent(activeSessionId, intent.intentId);
+  }, [activeSessionId, st.intent]);
 
   const newChat = useCallback(async (): Promise<boolean> => {
     if (editing && !(await commitEdit())) return false;
@@ -682,27 +733,74 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveSessionId(id);
     writeSessionLocation(id);
     markSessionSeen(sessions.find(session => session.id === id));
-    await refreshSessions();
+    void refreshSessions();
     setTitleOverride(null);
+    setViewState('chat');
     return true;
   }, [editing, commitEdit, refreshSessions, markSessionSeen, sessions]);
   const renameSession = useCallback((_id: string, title: string) => {
     if (title.trim()) setTitleOverride(title.trim());
   }, []);
-  const delSession = useCallback(async (_id: string) => newChat(), [newChat]);
+  const delSession = useCallback(async (id: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await agentClient.deleteSession(id);
+    if (!result.ok) return result;
+
+    const list = await agentClient.listSessions();
+    setSessionsState(list);
+    setComposerDrafts(current => {
+      if (!(id in current)) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    if (id in seenRuns) {
+      const nextSeen = { ...seenRuns };
+      delete nextSeen[id];
+      persistSeenRuns(nextSeen);
+    }
+
+    if (activeSessionId === id) {
+      cancelEdit();
+      setTitleOverride(null);
+      setCanvasTab(null);
+      setOpenTabs([]);
+      setActiveStep(null);
+      setActiveTurn(null);
+      setPendingAgentChanges([]);
+      pendingAgentChangesRef.current = [];
+      hydratedWorkspaceRef.current = null;
+
+      const next = list[0];
+      if (next) {
+        const opened = await agentClient.getSession(next.id);
+        if (opened.ok) {
+          setActiveSessionId(next.id);
+          writeSessionLocation(next.id, true);
+        } else {
+          setActiveSessionId(null);
+          writeSessionLocation(null, true);
+        }
+      } else {
+        setActiveSessionId(null);
+        writeSessionLocation(null, true);
+      }
+    }
+    return { ok: true };
+  }, [activeSessionId, cancelEdit, persistSeenRuns, seenRuns]);
 
   const value: WorkspaceCtx = {
     active,
     sessions,
     activeId: activeSessionId,
-    activeTab, canvasTab, activeStep, activeTurn, wsOpen, editing, editDirty, editSaving, editSaveError, search, view, flashMsg, composerDraft, pendingAgentChanges,
-    error: st.error, loading: !!st.loading, connectionStatus: clientState.connectionStatus, steerQueue: st.steerQueue, goal: st.goal, thinking, model: clientState.model, workspaceRoot: clientState.workspaceRoot, cwd: st.cwd, piInheritanceRevision,
+    activeTab, canvasTab, activeStep, activeTurn, wsOpen, canvasFocused, editing, editDirty, editSaving, editSaveError, fileSelectionMode, selectedFilePaths, search, view, flashMsg, composerDraft, pendingAgentChanges,
+    error: st.error, loading: !!st.loading, connectionStatus: clientState.connectionStatus, steerQueue: st.steerQueue, goal: st.goal, intent: st.intent, thinking, model: clientState.model, workspaceRoot: clientState.workspaceRoot, cwd: st.cwd, piInheritanceRevision,
     hasUnreadCompletions, isSessionUnread,
     sendMessage, steerMessage, interruptWithSteer, newChat, switchSession, renameSession, delSession,
-    setSearch, setView, setWsOpen, setActiveTab, revealInFiles,
+    setSearch, setView, setWsOpen, setCanvasFocused: setCanvasFocusedState, setActiveTab, revealInFiles,
     openInCanvas, closeCanvasTab, closeOtherCanvasTabs, closeAllCanvasTabs,
-    renameWorkspaceFile, deleteWorkspaceFile, showStep, toggleFolder, toggleThinking,
-    openTurn, navCanvas,
+    renameWorkspaceFile, deleteWorkspaceFile, refreshWorkspaceFiles, showStep, toggleFolder, toggleThinking, confirmIntent, dismissIntent,
+    setFileSelectionMode, setSelectedFilePaths, toggleFileSelection, clearFileSelection,
+    openTurn,
     enterEdit, exitEdit, saveEdit, setEditBuffer, getEditBuffer, getFileContent,
     locateFileSource, setFlashMsg, setComposerDraft,
   };

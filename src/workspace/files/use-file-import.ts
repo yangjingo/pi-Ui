@@ -12,10 +12,14 @@ export interface FileImportProgress {
   fileName: string;
 }
 
+export type FileImportNotice =
+  | { kind: 'session-required' }
+  | { kind: 'result'; imported: number; office: number; unsupported: number; failed: number };
+
 export function useFileImport() {
   const { activeId, setActiveTab } = useWorkspace();
   const [fileDrop, setFileDrop] = useState(false);
-  const [dropMsg, setDropMsg] = useState<string | null>(null);
+  const [dropNotice, setDropNotice] = useState<FileImportNotice | null>(null);
   const [importProgress, setImportProgress] = useState<FileImportProgress | null>(null);
   const uploadRef = useRef<HTMLInputElement | null>(null);
   const folderRef = useRef<HTMLInputElement | null>(null);
@@ -24,7 +28,7 @@ export function useFileImport() {
   const ingestFiles = async (files: File[]) => {
     if (!files.length) return;
     if (!activeId) {
-      setDropMsg('请先创建 Session，再导入文件');
+      setDropNotice({ kind: 'session-required' });
       return;
     }
     let ok = 0, office = 0, unsupported = 0, failed = 0;
@@ -42,10 +46,9 @@ export function useFileImport() {
       } catch { failed++; }
       finally { setImportProgress({ completed: index + 1, total: files.length, fileName: file.name }); }
     }
-    const details = [office ? `其中 ${office} 个 Office 文件` : '', unsupported ? `跳过 ${unsupported} 个不支持的二进制文件` : '', failed ? `${failed} 个写入失败` : ''].filter(Boolean).join('，');
-    setDropMsg(`${ok ? `已导入 ${ok} 个文件` : '未能导入文件'}${details ? `，${details}` : ''}`);
+    setDropNotice({ kind: 'result', imported: ok, office, unsupported, failed });
     window.setTimeout(() => setImportProgress(null), 650);
-    window.setTimeout(() => setDropMsg(null), 3000);
+    window.setTimeout(() => setDropNotice(null), 3000);
   };
 
   const onFileDrop = async (event: React.DragEvent) => {
@@ -67,5 +70,5 @@ export function useFileImport() {
     if (dragDepthRef.current === 0) setFileDrop(false);
   };
 
-  return { fileDrop, dropMsg, importProgress, uploadRef, folderRef, ingestFiles, onFileDrop, onWorkspaceDragEnter, onWorkspaceDragLeave };
+  return { fileDrop, dropNotice, importProgress, uploadRef, folderRef, ingestFiles, onFileDrop, onWorkspaceDragEnter, onWorkspaceDragLeave };
 }

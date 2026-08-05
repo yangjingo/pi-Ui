@@ -1,4 +1,4 @@
-import type { FileNode, LongRunningGoal, Session, SessionSummary, SteerItem, WorkspaceChange } from '../../core/agent';
+import type { FileNode, IntentDraft, LongRunningGoal, Session, SessionSummary, SteerItem, WorkspaceChange } from '../../core/agent';
 
 /** The right-side workspace has one home for artifacts and one for focused context.
  * Shared Agent Core settings belong to the model configuration Canvas. */
@@ -16,10 +16,13 @@ export interface WorkspaceCtx {
   activeStep: StepRef | null;
   activeTurn: TurnRef | null;
   wsOpen: boolean;
+  canvasFocused: boolean;
   editing: boolean;
   editDirty: boolean;
   editSaving: boolean;
   editSaveError: string | null;
+  fileSelectionMode: boolean;
+  selectedFilePaths: string[];
   search: string;
   view: View;
   flashMsg: number | null;
@@ -30,6 +33,7 @@ export interface WorkspaceCtx {
   connectionStatus: 'connecting' | 'connected' | 'reconnecting';
   steerQueue: SteerItem[];
   goal: LongRunningGoal | null;
+  intent: IntentDraft | null;
   thinking: boolean;
   model: string | null;
   workspaceRoot: string | null;
@@ -44,10 +48,11 @@ export interface WorkspaceCtx {
   newChat(): Promise<boolean>;
   switchSession(id: string): Promise<boolean>;
   renameSession(id: string, title: string): void;
-  delSession(id: string): Promise<boolean>;
+  delSession(id: string): Promise<{ ok: boolean; error?: string }>;
   setSearch(v: string): void;
   setView(v: View): Promise<boolean>;
   setWsOpen(b: boolean): Promise<boolean>;
+  setCanvasFocused(focused: boolean): void;
   setActiveTab(t: WorkspaceTab): Promise<boolean>;
   revealInFiles(path: string): Promise<boolean>;
   openInCanvas(name: string): Promise<boolean>;
@@ -56,11 +61,17 @@ export interface WorkspaceCtx {
   closeAllCanvasTabs(): Promise<boolean>;
   renameWorkspaceFile(path: string, nextName: string): Promise<{ ok: boolean; error?: string; path?: string }>;
   deleteWorkspaceFile(path: string): Promise<{ ok: boolean; error?: string }>;
+  refreshWorkspaceFiles(): Promise<boolean>;
+  setFileSelectionMode(on: boolean): void;
+  setSelectedFilePaths(paths: string[]): void;
+  toggleFileSelection(paths: string[]): void;
+  clearFileSelection(): void;
   showStep(mi: number, si: number): Promise<boolean>;
   toggleFolder(node: FileNode): void;
   toggleThinking(): void;
+  confirmIntent(replaceExisting?: boolean): Promise<{ ok: boolean; error?: string }>;
+  dismissIntent(): Promise<{ ok: boolean; error?: string }>;
   openTurn(mi: number): Promise<boolean>;
-  navCanvas(dir: -1 | 1): void;
   enterEdit(): void;
   exitEdit(): void;
   saveEdit(): Promise<boolean>;
