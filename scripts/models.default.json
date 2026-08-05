@@ -1,0 +1,104 @@
+{
+  "providers": {
+    "qwen-local": {
+      "name": "Qwen3.6-35B-A3B (Openlab)",
+      "baseUrl": "http://10.143.2.130:8088/v1",
+      "api": "openai-completions",
+      "authHeader": true,
+      "models": [
+        {
+          "id": "Qwen/Qwen3.6-35B-A3B",
+          "name": "Qwen3.6-35B-A3B (Openlab)",
+          "api": "openai-completions",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 262144,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    "glm52-green": {
+      "name": "GLM-5.2 (Openlab)",
+      "baseUrl": "http://100.102.191.165:1300/v1",
+      "api": "openai-completions",
+      "authHeader": true,
+      "models": [
+        {
+          "id": "GLM-5.2",
+          "name": "GLM-5.2 (Openlab)",
+          "api": "openai-completions",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 200000,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    "dsv4-flash": {
+      "name": "DeepSeek V4 Flash 0731 (Openlab)",
+      "baseUrl": "http://100.102.191.165:1100/v1",
+      "api": "openai-completions",
+      "authHeader": true,
+      "models": [
+        {
+          "id": "dsv4_dspark",
+          "name": "DeepSeek V4 Flash 0731 (Openlab)",
+          "api": "openai-completions",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 262144,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    "local-glm": {
+      "name": "GLM 5.2 (Openlab)",
+      "baseUrl": "http://10.143.3.201:8077/v1",
+      "api": "openai-completions",
+      "authHeader": true,
+      "models": [
+        {
+          "id": "glm-5.2",
+          "name": "GLM 5.2 (Openlab)",
+          "api": "openai-completions",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 200000,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}
