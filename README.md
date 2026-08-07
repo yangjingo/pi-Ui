@@ -11,7 +11,7 @@ Bring your own brand, language, Harness, and Skills—without weakening the runt
 ![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-343434?style=flat-square)
 ![Local first](https://img.shields.io/badge/runtime-local--first-65A30D?style=flat-square)
 
-[Highlights](#why-pi-ui) · [Design principles](#restraint-means-appearing-only-when-needed) · [Quickstart](#running-in-two-minutes) · [Architecture](#one-package-five-explicit-boundaries) · [HTML deck](./docs/slides/index.html)
+[Highlights](#why-pi-ui) · [Quick deploy](#deploy-in-one-command) · [Design principles](#restraint-means-appearing-only-when-needed) · [Development](./docs/DEVELOPMENT.md) · [HTML deck](./docs/slides/index.html)
 
 </div>
 
@@ -19,7 +19,32 @@ Bring your own brand, language, Harness, and Skills—without weakening the runt
   <img src="./docs/assets/readme/conversation-canvas.gif" width="800" alt="Pi UI conversation and Canvas linkage demo" />
 </p>
 
-<p align="center"><sub>Conversation preserves context. Canvas handles inspection and editing. Every linkage is triggered by an explicit user action.</sub></p>
+<p align="center"><sub>Conversation preserves context. Canvas opens a real, theme-matched HTML artifact for inspection. Every linkage is triggered by an explicit user action.</sub></p>
+
+## Why Pi UI
+
+| Highlight | What it changes for the user | The boundary that keeps it trustworthy |
+| --- | --- | --- |
+| **Contract-first agent work** | Complex tasks begin from an explicit Goal Contract and end with a completion audit | Exact `intentId + revision + contractHash` confirmation before execution |
+| **Conversation ↔ Canvas** | Follow the run on the left; inspect raw evidence and finished artifacts on the right | Canvas changes only after a user action—never through implicit synchronization |
+| **Skill lifecycle, not a marketplace** | Turn a strong result into a reusable local capability | Draft → validation turn → naming discussion → controlled `skill_package` |
+| **One local-first package** | Install the browser UI, Core runtime, Harnesses, and CLI together | Loopback-only Core, same-origin API checks, and server-side credentials |
+
+The hero is captured from the running Pi UI—not a marketing mock. Its Canvas renders the same offline [inspection brief](./docs/demos/inspection-brief.html) that ships with these docs.
+
+## Deploy in one command
+
+From the project you want Pi UI to work in:
+
+```bash
+cd /path/to/your-project
+npx --yes @whyj/pi-ui@latest install
+```
+
+That command creates an ignored `.workspace/`, starts the browser UI and Core API, and opens `http://127.0.0.1:4173`. No global install or public server is required. Press `Ctrl+C` to stop; run `npx --yes @whyj/pi-ui@latest start` to return.
+
+> [!NOTE]
+> Already have Pi on this machine? First launch can explicitly inherit its configured models, authentication, and historical Sessions while keeping the original Session JSONL read-only.
 
 ## One minimal UI. A workspace your business can define.
 
@@ -36,15 +61,13 @@ Your product adapts the experience through stable contracts:
 
 The result is a UI foundation that can live inside different products without giving up its architecture, accessibility, or Pi identity.
 
-## Why Pi UI
+## The workflows that matter
 
 ### 01 · Harness turns “please do the right thing” into a verifiable contract
 
-<p align="center">
-  <img src="./docs/assets/readme/goal-harness.gif" width="800" alt="Pi UI Goal Harness contract review and confirmation demo" />
-</p>
-
 A complex task does not start merely because someone types `/goal`. Goal Harness first persists a UserIntent and Goal Contract. Core permits goal creation only after the user confirms the exact `intentId + revision + contractHash`. Completion then passes through a structured audit covering every agreed deliverable, acceptance criterion, constraint, non-goal, and verification step.
+
+See the contract flow and running UI in the [Goal Harness walkthrough (slide 04)](./docs/slides/index.html#slide-04).
 
 - **Context Harness** keeps a stable context prefix, deterministic Tool/Skill ordering, and cache-usage evidence.
 - **File Harness** provides browser-safe file access, Session isolation, and controlled write boundaries.
@@ -66,11 +89,9 @@ Both “what the agent did” and “what the artifact is now” remain visible,
 
 ### 03 · Skill Hub is a capability pipeline, not a marketplace pop-up
 
-<p align="center">
-  <img src="./docs/assets/readme/skill-hub.gif" width="800" alt="Pi UI local Skill Hub and file editing demo" />
-</p>
-
 Skill Hub manages only the current Workspace's local Skills. Catalog reads stay lightweight, full packages load only when opened, and dependency environments are fingerprinted and reused at Workspace scope instead of being copied into every Session.
+
+See the complete validation and packaging sequence in the [Skill Hub walkthrough (slide 06)](./docs/slides/index.html#slide-06).
 
 A strong Agent turn can become a reusable Skill, but the path is deliberately staged:
 
@@ -91,18 +112,9 @@ Pi UI's primary design principle is **progressive disclosure**: the user chooses
 
 These are product decisions, not missing features: content leads, structure recedes, and every persistent animation must correspond to real running work.
 
-## Running in two minutes
+## Deployment and operations
 
-Node.js 20 or newer is required. No global installation is necessary:
-
-```bash
-cd /path/to/your-project
-npx --yes @whyj/pi-ui@latest install
-```
-
-`install` creates an ignored `.workspace/`, starts the UI and Core API, and opens `http://127.0.0.1:4173`. Press `Ctrl+C` to stop.
-
-For regular use, install the CLI:
+Node.js 20 or newer is required. The one-command path above is the fastest start; for regular use, install the CLI globally:
 
 ```bash
 npm install --global @whyj/pi-ui
@@ -143,50 +155,9 @@ pnpm start
 > [!IMPORTANT]
 > Pi UI is currently a local desktop workbench, not a public SaaS server. Core accepts only `127.0.0.1`, `localhost`, or `::1`, and browser API calls must pass same-origin validation. Because there is no remote authentication boundary, `0.0.0.0`, LAN, and public-host listening are intentionally rejected.
 
-## One package, five explicit boundaries
+## Development
 
-<p align="center">
-  <img src="./docs/assets/pi-ui-architecture.svg" width="100%" alt="Pi UI five-module architecture and browser-to-Node trust boundary" />
-</p>
-
-The primary dependency directions are `canvas → workspace → core/agent`, `canvas → ui`, and `core/pi → harness`.
-
-- `core`: Agent loop, browser gateway, protocol, Node transport, and Pi runtime.
-- `harness`: replaceable Context, File, Goal, and Skill constraints with persistence.
-- `ui`: semantic tokens, themes, locale, formatting, and business-state-free primitives.
-- `canvas`: application panels, file/trajectory renderers, inspection, and editing.
-- `workspace`: files, models, Skills, Sessions, and browser application state.
-
-These boundaries isolate reasons to change while shipping as one `@whyj/pi-ui` package: `dist/` contains the browser UI, `dist-node/` contains Node Core, Harness, and runtime, and `bin/pi-ui.js` remains a thin CLI entry.
-
-## Deliberate trade-offs
-
-| We choose | We give up | Why |
-| --- | --- | --- |
-| Loopback-only Core + same-origin checks | Unauthenticated remote access | Credentials, Pi SDK, and filesystem stay inside the Node trust boundary |
-| Explicit click-driven linkage | Automatic focus stealing and implicit synchronization | Users always know why Canvas changed |
-| Progressive disclosure | Permanent toolbars, badges, and metric walls | Long-running Agent work needs a low cognitive load |
-| Desktop-only with zoom support | Phone, touch, and mobile-drawer layouts | Preserve one dense, predictable two-column work model |
-| Local Skill Hub with validation before contribution | Built-in remote marketplace and one-click publish | Reusable capability must not bypass review and naming confirmation |
-| One npm package | Five independently versioned packages | Module boundaries should not transfer integration complexity to adopters |
-
-Read the full rationale in [Architecture](./docs/ARCHITECTURE.md), [UX Principles](./docs/UX.md), and [Design System](./docs/DESIGN.md). The same story is available as a browser-native [Pi UI HTML deck](./docs/slides/index.html).
-
-## Development and verification
-
-Use pnpm on Windows to avoid exceeding dependency path limits in the Pi SDK:
-
-```bash
-pnpm install
-pnpm dev
-pnpm typecheck
-pnpm test:modules
-pnpm test:canvas
-pnpm test:e2e
-pnpm build
-```
-
-Runtime data belongs only in `.workspace/`. Never commit `.env`, API keys, generated runtime data, or Workspace contents, and never expose provider credentials through a `VITE_*` variable.
+Repository boundaries, deliberate trade-offs, source commands, and verification guidance now live in the dedicated [Pi UI development guide](./docs/DEVELOPMENT.md). For the underlying product contracts, see [Architecture](./docs/ARCHITECTURE.md), [UX Principles](./docs/UX.md), and [Design System](./docs/DESIGN.md).
 
 ---
 

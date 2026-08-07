@@ -6,7 +6,7 @@
 ## Overview
 
 Pi UI 默认使用接近黑色、低眩光的灰黑主题，面向长时间运行的本地 Agent 工作台。ZenGrid
-保留暖白编辑风格；AIDA 是根据 [AIDA-DESIGN.md](./AIDA-DESIGN.md) 落地的浅色企业控制台主题。
+保留暖白编辑风格；AIDA 保留为由下方完整语义 token 定义的浅色企业控制台主题。
 三个主题共用相同组件、间距、状态和交互，只通过 `html[data-theme]` 覆盖语义 token；业务
 组件不得根据主题名改变行为。AIDA 可以改变字体角色、颜色与图标状态色，但不能改变信息架构、
 控件行为或 Canvas 工作流。
@@ -59,7 +59,7 @@ AIDA 可选色阶：
 - **Border / Strong Border** (#E3E8EF / #CBD5E1)
 - **Brand Indigo** (#3551D8): product Logo, AI identity, primary action, active navigation and focus
 - **Brand Soft** (#EEF1FC): selected rows and quiet active surfaces
-- **Success / Warning / Danger / Info**: reserved functional state families from `AIDA-DESIGN.md`
+- **Success / Warning / Danger / Info**: reserved functional state families for feedback only
 Pi UI 的 AIDA 集成不使用原稿的 Red Logo；产品决策将 Logo、欢迎页 hover 和交互身份统一为
 Brand Indigo，危险状态仍独立使用 Danger 色族。AIDA 原稿的 `#64748B` muted 值保留为规范色；Pi UI 中承担普通小字的
 `--content-tertiary` 会略微加深以满足当前背景上的 WCAG AA。图标默认使用中性灰，只有可交互、

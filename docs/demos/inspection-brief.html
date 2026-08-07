@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23171717'/%3E%3Cpath fill='%23e5e5e5' d='M6 6h14v9h-5v5h-5v5H6zm5 5v4h4v-4zm9 4h5v10h-5z'/%3E%3C/svg%3E" />
+  <title>Inspection brief</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --surface-base: #171717;
+      --surface-raised: #202020;
+      --surface-sunken: #121212;
+      --content-primary: #e5e5e5;
+      --content-secondary: #b8b8b8;
+      --content-tertiary: #949494;
+      --border: #343434;
+      --border-strong: #505050;
+      --success: #65a30d;
+      --ease-out: cubic-bezier(.23, 1, .32, 1);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--surface-base);
+      color: var(--content-primary);
+      font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      position: relative;
+      isolation: isolate;
+      overflow-x: hidden;
+      background-image:
+        radial-gradient(circle at 82% 9%, rgba(229, 229, 229, .045), transparent 30%),
+        radial-gradient(circle at 14% 88%, rgba(101, 163, 13, .035), transparent 28%),
+        linear-gradient(rgba(255, 255, 255, .012) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, .012) 1px, transparent 1px);
+      background-size: auto, auto, 24px 24px, 24px 24px;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      content: "";
+      pointer-events: none;
+      opacity: .17;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.28'/%3E%3C/svg%3E");
+      mix-blend-mode: soft-light;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: 34px 0 44px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 28px;
+      align-items: end;
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+      color: var(--content-tertiary);
+      font: 500 10px/1.2 "Fira Code", Consolas, monospace;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+
+    .mark {
+      display: grid;
+      width: 22px;
+      height: 22px;
+      place-items: center;
+      border: 1px solid var(--border-strong);
+      border-radius: 3px;
+      color: var(--content-primary);
+    }
+
+    .mark svg { width: 12px; height: 12px; }
+
+    h1,
+    h2,
+    p { margin: 0; }
+
+    h1 {
+      max-width: 680px;
+      font: 300 clamp(30px, 5vw, 54px)/1.02 Raleway, "Segoe UI", system-ui, sans-serif;
+      letter-spacing: -.045em;
+      text-wrap: balance;
+    }
+
+    .intro {
+      max-width: 650px;
+      margin-top: 13px;
+      color: var(--content-secondary);
+      font-size: 13px;
+      line-height: 1.65;
+      text-wrap: pretty;
+    }
+
+    .status {
+      display: grid;
+      min-width: 156px;
+      gap: 6px;
+      justify-items: end;
+      padding-bottom: 3px;
+    }
+
+    .status span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--content-secondary);
+      font: 500 10px/1.2 "Fira Code", Consolas, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .status span::before {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--success);
+      content: "";
+    }
+
+    .status time {
+      color: var(--content-tertiary);
+      font: 10px/1.3 "Fira Code", Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin: 28px 0 18px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 18px 20px 20px;
+      border-left: 1px solid var(--border);
+    }
+
+    .metric:first-child { border-left: 0; }
+
+    .metric small,
+    .section-label {
+      color: var(--content-tertiary);
+      font: 500 9px/1.3 "Fira Code", Consolas, monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font: 300 clamp(25px, 4vw, 39px)/1 Raleway, "Segoe UI", system-ui, sans-serif;
+      letter-spacing: -.035em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric em {
+      display: block;
+      margin-top: 6px;
+      color: var(--content-secondary);
+      font: normal 10px/1.35 "Fira Code", Consolas, monospace;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(200px, .8fr);
+      gap: 18px;
+    }
+
+    section {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
+    }
+
+    .coverage { padding: 22px; }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+
+    .section-head h2 {
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -.01em;
+    }
+
+    .section-head span {
+      color: var(--content-tertiary);
+      font: 9px "Fira Code", Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bars { display: grid; gap: 15px; }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 90px minmax(0, 1fr) 44px;
+      gap: 12px;
+      align-items: center;
+      color: var(--content-secondary);
+      font-size: 11px;
+    }
+
+    .bar-row b {
+      font: 500 10px/1 "Fira Code", Consolas, monospace;
+      color: var(--content-secondary);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .track {
+      height: 5px;
+      overflow: hidden;
+      border-radius: 2px;
+      background: var(--surface-sunken);
+    }
+
+    .track i {
+      display: block;
+      width: var(--value);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--content-secondary);
+      transform-origin: left;
+    }
+
+    .bar-row:last-child .track i { background: var(--success); }
+
+    .review {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding: 22px;
+    }
+
+    .review-list { display: grid; align-content: start; gap: 0; }
+
+    .review-item {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 48px;
+      border-top: 1px solid var(--border);
+    }
+
+    .review-item:first-child { border-top: 0; }
+
+    .review-index {
+      color: var(--content-tertiary);
+      font: 9px "Fira Code", Consolas, monospace;
+    }
+
+    .review-copy strong {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .review-copy small {
+      display: block;
+      margin-top: 2px;
+      color: var(--content-tertiary);
+      font-size: 9px;
+    }
+
+    .review-item > small {
+      color: var(--content-secondary);
+      font: 9px "Fira Code", Consolas, monospace;
+    }
+
+    .note {
+      margin-top: 16px;
+      padding-top: 15px;
+      border-top: 1px solid var(--border);
+      color: var(--content-tertiary);
+      font: 9px/1.55 "Fira Code", Consolas, monospace;
+    }
+
+    header,
+    .metrics,
+    section {
+      opacity: 0;
+      transform: translateY(7px);
+      animation: reveal 240ms var(--ease-out) forwards;
+    }
+
+    .metrics { animation-delay: 40ms; }
+    .coverage { animation-delay: 75ms; }
+    .review { animation-delay: 110ms; }
+
+    @keyframes reveal {
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (max-width: 520px) {
+      main { width: min(100% - 28px, 680px); padding-block: 24px 34px; }
+      header { grid-template-columns: 1fr; }
+      .status { justify-items: start; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .metric:nth-child(3) { border-left: 0; }
+      .metric:nth-child(-n + 2) { border-bottom: 1px solid var(--border); }
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      header,
+      .metrics,
+      section {
+        transform: none;
+        animation: reveal-opacity 160ms var(--ease-out) forwards;
+      }
+
+      @keyframes reveal-opacity { to { opacity: 1; } }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <div class="brand">
+          <span class="mark" aria-hidden="true">
+            <svg viewBox="0 0 800 800"><path fill="currentColor" fill-rule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z"/></svg>
+          </span>
+          Pi inspection system / batch 042
+        </div>
+        <h1>Evidence, ready for review.</h1>
+        <p class="intro">Twenty-six inspection reports were parsed into a traceable brief. Every aggregate remains linked to its source page, table, and image.</p>
+      </div>
+      <div class="status">
+        <span>Validated</span>
+        <time datetime="2026-08-07T14:06:00+08:00">07 AUG 2026 · 14:06</time>
+      </div>
+    </header>
+
+    <div class="metrics" aria-label="Inspection totals">
+      <article class="metric"><small>Reports</small><strong>26</strong><em>26 / 26 parsed</em></article>
+      <article class="metric"><small>Pages</small><strong>84</strong><em>text indexed</em></article>
+      <article class="metric"><small>Tables</small><strong>91</strong><em>cells normalized</em></article>
+      <article class="metric"><small>Images</small><strong>143</strong><em>captions verified</em></article>
+    </div>
+
+    <div class="layout">
+      <section class="coverage">
+        <div class="section-head">
+          <h2>Extraction coverage</h2>
+          <span>weighted confidence</span>
+        </div>
+        <div class="bars">
+          <div class="bar-row"><span>Identity</span><div class="track"><i style="--value: 100%"></i></div><b>100%</b></div>
+          <div class="bar-row"><span>Measurements</span><div class="track"><i style="--value: 97.8%"></i></div><b>97.8%</b></div>
+          <div class="bar-row"><span>Exceptions</span><div class="track"><i style="--value: 93.6%"></i></div><b>93.6%</b></div>
+          <div class="bar-row"><span>Traceability</span><div class="track"><i style="--value: 99.2%"></i></div><b>99.2%</b></div>
+        </div>
+      </section>
+
+      <section class="review">
+        <div class="section-head">
+          <h2>Review queue</h2>
+          <span>3 items</span>
+        </div>
+        <div class="review-list">
+          <div class="review-item"><span class="review-index">01</span><div class="review-copy"><strong>Unit mismatch</strong><small>Report 08 · page 4</small></div><small>open</small></div>
+          <div class="review-item"><span class="review-index">02</span><div class="review-copy"><strong>Low contrast seal</strong><small>Report 17 · page 2</small></div><small>open</small></div>
+          <div class="review-item"><span class="review-index">03</span><div class="review-copy"><strong>Repeated asset ID</strong><small>Report 21 · table 6</small></div><small>open</small></div>
+        </div>
+        <p class="note">The brief is complete. Open any exception to inspect the raw evidence in Canvas.</p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
