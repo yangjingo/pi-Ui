@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+git diff --cached --check
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(git rev-parse --show-toplevel)/scripts/precommit.ps1"

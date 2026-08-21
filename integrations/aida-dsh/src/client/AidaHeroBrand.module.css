@@ -1,0 +1,109 @@
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.lockup {
+  display: grid;
+  grid-template-columns: 50px 1px auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.mark {
+  display: block;
+  filter: drop-shadow(0 8px 16px color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent));
+}
+
+.divider {
+  width: 1px;
+  height: 42px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 24%, transparent);
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+.name {
+  color: var(--dsw-alias-label-primary);
+  font-size: 28px;
+  line-height: 30px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.descriptor {
+  color: var(--dsw-alias-brand-text);
+  font-family: var(--ds-font-family-code);
+  font-size: 9px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  white-space: nowrap;
+}
+
+.tagline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.slogan {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.preview {
+  flex: none;
+  padding: 1px 8px 0;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 9%, transparent);
+  color: var(--dsw-alias-brand-text);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .lockup {
+    grid-template-columns: 44px 1px auto;
+    gap: 11px;
+  }
+
+  .mark {
+    width: 44px;
+    height: 44px;
+  }
+
+  .divider {
+    height: 36px;
+  }
+
+  .name {
+    font-size: 24px;
+    line-height: 26px;
+  }
+
+  .descriptor {
+    font-size: 8px;
+  }
+}

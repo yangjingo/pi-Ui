@@ -1,0 +1,4 @@
+# Install the complete AIDA browser identity and Canvas as one removable DSH bundle row.
+- insert:
+    - id: ui-aida
+      name: '@deepseek-ai/dsh-client-ui-aida'

@@ -1,0 +1,8 @@
+*** Begin Patch
+*** Update File: packages/client/ui-trajectory/src/client/index.ts
+@@
++export { TrajectoryView, type TrajectoryViewInjected } from './TrajectoryView.tsx'
++export { createTrajectoryDurationStore } from './duration-store.ts'
++export type { TrajectoryKey } from './locales.ts'
++export type { TrajectorySnapshot } from './trajectory-contract.ts'
+*** End Patch

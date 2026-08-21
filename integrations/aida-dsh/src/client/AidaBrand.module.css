@@ -1,0 +1,102 @@
+.body,
+.accent {
+  fill: #1e293b;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mark {
+  display: block;
+}
+
+.railMark {
+  display: block;
+}
+
+/* AIDA atmosphere layer. The frame owns the full-viewport artwork while
+   functional columns keep translucent semantic surfaces above it. */
+:global(body) {
+  background-color: var(--dsw-alias-bg-base);
+}
+
+:global(#root > div > div) {
+  background-color: var(--dsw-alias-bg-base) !important;
+  background-image: none !important;
+}
+
+:global(#root > div > div::before) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url('/aida-background.png') center / cover no-repeat;
+  filter: contrast(1.06) saturate(0.92);
+  opacity: 0.76;
+}
+
+:global([class*='_centerCol'] > div > div) {
+  background-color: transparent !important;
+  backdrop-filter: none;
+}
+
+:global([class*='_centerCol'] [class*='_scrollBody']),
+:global([class*='_centerCol'] [class*='_viewArea']),
+:global([class*='_centerCol'] [class*='_scrollBody'] > div:first-child > div > div) {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+:global([class*='_centerCol'] [class*='_viewArea']) {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+}
+
+:global([class*='_centerCol'] [class*='_card']) {
+  background-color: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 46%, transparent) !important;
+  border-color: color-mix(in srgb, #789bd6 16%, rgba(255, 255, 255, 0.82)) !important;
+  box-shadow:
+    0 18px 48px rgba(65, 91, 138, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76) !important;
+  backdrop-filter: blur(18px) saturate(112%);
+}
+
+:global([class*='_sidebarCol']) {
+  background-color: transparent !important;
+  background-image:
+    linear-gradient(rgba(248, 250, 254, 0.22), rgba(248, 250, 254, 0.22)),
+    url('/aida-background.png') !important;
+  background-position: left top, left top !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 100vw 100vh, 100vw 100vh !important;
+  border-right-color: rgba(108, 137, 184, 0.14) !important;
+  backdrop-filter: blur(18px) saturate(106%);
+}
+
+:global(#root > div > div > [class*='_sidebarCol'] > div),
+:global(#root > div > div > [class*='_sidebarCol'] > div > div) {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+:global(body[data-ds-dark-theme] #root > div > div) {
+  background-color: var(--dsw-alias-bg-base) !important;
+}
+
+:global(body[data-ds-dark-theme] #root > div > div::before) {
+  filter: saturate(0.7) brightness(0.5);
+  opacity: 0.24;
+}
+
+body[data-ds-dark-theme] .body {
+  fill: #fff;
+}
+
+body[data-ds-dark-theme] .accent {
+  fill: var(--aida-logo-accent);
+}
