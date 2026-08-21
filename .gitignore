@@ -1,19 +1,5 @@
-node_modules
-dist
-dist-ssr
-dist-node
-*.local
-.vite
-.env
-/workspace/
-.workspace/
-.pi-workspace/
+node_modules/
+lib/
 *.tsbuildinfo
-
-# test / runtime artifacts
-*.log
-__pycache__/
-tests/**/screenshots/
-output/
+.DS_Store
 .playwright-cli/
-.pnpm-store/

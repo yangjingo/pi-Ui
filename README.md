@@ -1,168 +1,79 @@
-<div align="center">
+# @deepseek-ai/dsh-client-ui-aida
 
-# Pi UI
+English | [中文](README.zh.md)
 
-**Minimal interface. Serious agent work.**
+Design and maintenance references: [AIDA UI design language](docs/design-language.md), [integration documentation](docs/README.md), and [agent guidance](AGENTS.md). UI changes are governed by the repository-local TASTE and Amicro skills, adapted to DSH's native primitives and semantic tokens.
 
-A local-first, business-adaptable workspace for Pi agents.<br />
-Bring your own brand, language, Harness, and Skills—without weakening the runtime boundary.
+AIDA is a browser-only deployment skin plus Canvas for the dsh Web client. The main interface keeps PIUI's existing new-session layout, replaces the expanded and collapsed sidebar artwork with one AIDA logo through `sidebar.brand` and `sidebar.mark`, and replaces the new-session brand lockup through `conversation.hero.brand` with `Logo | AIDA`, the `DELIVERY INTELLIGENCE` descriptor, the localized project-delivery slogan, and the Preview label. It changes presentation only: agent composition, tools, prompts, session behavior, and durable data remain untouched.
 
-[![npm version](https://img.shields.io/npm/v/%40whyj%2Fpi-ui?style=flat-square&label=npm&color=343434)](https://www.npmjs.com/package/@whyj/pi-ui)
-![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-343434?style=flat-square)
-![Local first](https://img.shields.io/badge/runtime-local--first-65A30D?style=flat-square)
+The visual identity uses the supplied `assets/brand-logo-light.svg` on light surfaces and `assets/brand-logo.svg` on dark surfaces. The sidebar renders only that symbol. The new-session Banner places the symbol beside an AIDA identity block, separated by a fine rule; `DELIVERY INTELLIGENCE` sits under the AIDA name, with the localized project-delivery slogan and compact Preview pill below the lockup. `assets/aida-wordmark.svg` remains the supplied source artwork, while the responsive Banner composes its live text for localization and narrow-view adaptation. The wider AIDA palette continues to use semantic `--dsw-*` variables owned by `theme.ts`.
 
-[Highlights](#why-pi-ui) · [Quick deploy](#deploy-in-one-command) · [Design principles](#restraint-means-appearing-only-when-needed) · [Development](./docs/DEVELOPMENT.md) · [HTML deck](./docs/slides/index.html)
+When a Session opens its initial history page, the plugin replaces the conversation package's plain loading-text fallback with a centered two-rail circular signal. The outer and inner rails counter-rotate in the active AIDA brand color, retain the localized `Loading history…` status, and become static under `prefers-reduced-motion: reduce`; removing the plugin restores the conversation fallback.
 
-</div>
+The plugin stacks its brand-token layer over the selected light, dark, or system theme, so the existing Appearance preference stays functional. Removing the `ui-aida` client entry reverses the token, locale, and slot registrations and restores the neutral PIUI sidebar artwork. The generic shells retain all interaction behavior: sidebar collapse and expansion, New Session, Workspace selection, and composer behavior are not replaced.
 
-<p align="center">
-  <img src="./docs/assets/readme/conversation-canvas.gif" width="800" alt="Pi UI conversation and Canvas linkage demo" />
-</p>
+## AIDA Canvas
 
-<p align="center"><sub>Conversation preserves context. Canvas opens a real, theme-matched HTML artifact for inspection. Every linkage is triggered by an explicit user action.</sub></p>
+On AIDA deployments a Canvas toggle appears in the session header's utilities row (beside the session-log export) — an icon-only button matching the sidebar's logo-row panel toggle (28px circular, tooltip/aria label; no text label) carrying the first-version Canvas mark: a rounded square ring around a 2×2 grid of small squares, in the icon set's rounded style. It opens the Canvas as the frame's **right-hand details track** — a true side-by-side column: the conversation reflows (never occluded), the column is drag-resizable with **no fixed maximum width** (the center-column floor bounds it on narrow viewports), and closing it restores the layout. A header **fullscreen icon at the top right** expands the Canvas to fill the whole conversation area — the frame grid collapses the center track to zero, so the conversation **truly shrinks** (it is never merely covered), window resizes recompute the override so the Canvas keeps filling the rest, and the flipped icon restores the three-column layout. The column occupies the `details` seat (a lower shadowing priority than the built-in tool-details panel), ported from the Pi Canvas feature set:
 
-## Why Pi UI
+- **Files** — the session workspace's recursive file tree (skipping hidden and tooling entries), with search, per-row rename/delete, Ctrl/⌘+click and Shift+click multi-selection (batch open/mention/delete), right-click row menus, in-tree drag-and-drop moves (the `host.moveFile` verb), drag-and-drop import, and file/folder pickers.
+- **Canvas** — open file tabs with format-aware rendering and editing:
+  - **Markdown** (`.md`/`.markdown`) renders as a formatted GFM document (the shared `MarkdownText` renderer, syntax-highlighted code fences); clicking 编辑 switches to the source textarea and Ctrl/⌘+S saves through the host.
+  - **HTML** (`.html`/`.htm`) renders in a sandboxed `allow-scripts` iframe; the same 编辑 toggle edits the source.
+  - **Mermaid** (`.mmd`/`.mermaid`) renders the diagram through a lazily loaded mermaid runtime (kept out of the main bundle); broken diagrams fall back to the source with the failure message.
+  - **SVG** (`.svg`) previews as the rendered image (the host classifies it as an image, so the read arrives as base64); the same 编辑 toggle edits the decoded UTF-8 source, and saving writes the text back and refreshes the rendered image in place.
+  - **JSON** (`.json`/`.jsonl`) renders as the shared collapsible `JsonTree` (per-node copy actions with localized labels); content that cannot render as a tree falls back to the raw text with an error note.
+  - **CSV/TSV** (`.csv`/`.tsv`) renders as a table with RFC-4180 quoting.
+  - **Source code** (`.py`, `.ts`/`.js`, `.rs`, `.go`, `.css`, `.xml`, and more) renders through the shared shiki `CodeBlock` with extension-derived syntax highlighting and a copy button.
+  - Other text files use the plain text pane, and image, PDF, Office (extracted text/sheet preview), and binary download previews round out the surface.
+- **Trajectory** — the trajectory surface: the center-column trajectory view is hidden (AIDA chrome), and this tab renders the **full original ui-trajectory view** inside the Canvas — the toolbar (turns/calls/input/model/tools), the timeline, and the record table with JSON payloads; clicking a record expands its input and output inline. The canvas renders it through the shared `conversation.view` seat (`renderSlot` with `only: 'trajectory'`); when ui-trajectory is absent, the tab falls back to its own **turn/call ledger** folded from the session snapshot — each turn header ("第 N 回合") groups its tool calls, headers collapse/expand their runs, and clicking a call opens its detail (args + output + produced files) with the back navigation. The toolbar carries the **会话日志 / Session log** download button (wired to the `sessionLogDownload` service); the tab order is 文件 / 轨迹 / 画布 with per-tab counts. The call detail is the merged tool-details view: the column shadows the built-in details panel, so tool inspection happens here, and clicking a tool row in the chat opens the column.
+- **Linkage** — the header toggle opens the column, the produced-files chips under each closing assistant message open in the Canvas instead of the Host OS opener, and the panel's ✕ closes it. The canvas column, the toggle, and the chips share one per-session store; column open/close is the frame's details-track state (`ctx.layout`).
+- **@-mention into the composer** — the project files are a composer `@` reference source (menu group 文件, listed above the built-in subagent source): typing `@` shows the session's text files and a pick inserts a `@path` chip whose model form embeds the file content at submit. The Files row action **引用到输入框** inserts the same chip for the selected file, and the Canvas preview's **引用** button quotes the current selection (the edit-area textarea selection, or the rendered preview's selection) as a blockquote labeled with its source path — falling back to a whole-file chip when there is no selection. A consecutive mention of the same file with no draft change in between is deduplicated (the second insert is a no-op). Picks and injections route through the conversation service's per-session input shell, so the column never touches the composer's machine directly.
 
-| Highlight | What it changes for the user | The boundary that keeps it trustworthy |
-| --- | --- | --- |
-| **Contract-first agent work** | Complex tasks begin from an explicit Goal Contract and end with a completion audit | Exact `intentId + revision + contractHash` confirmation before execution |
-| **Conversation ↔ Canvas** | Follow the run on the left; inspect raw evidence and finished artifacts on the right | Canvas changes only after a user action—never through implicit synchronization |
-| **Skill lifecycle, not a marketplace** | Turn a strong result into a reusable local capability | Draft → validation turn → naming discussion → controlled `skill_package` |
-| **One local-first package** | Install the browser UI, Core runtime, Harnesses, and CLI together | Loopback-only Core, same-origin API checks, and server-side credentials |
+The Canvas reads files through six loopback-pinned host methods (`host.listFiles`, `host.readFile`, `host.writeFile`, `host.renameFile`, `host.moveFile`, `host.deleteFile`) exposed on the runtime `IWorkspaces` face. The host accepts only roots in the Workspace registry, then canonicalizes every target and rejects escapes; a browser request cannot name an arbitrary host directory. A session change aborts in-flight list/read/upload requests and clears browser-local progress before the new Workspace tree renders. Trajectory and conversation facts come from the session snapshot, so they add no wire methods. Removing the `ui-aida` entry withdraws the column, toggle, and chips; the built-in tool-details panel resumes the `details` seat, the center-column trajectory view and the header download button return, and every other component returns to the neutral UI.
 
-The hero is captured from the running Pi UI—not a marketing mock. Its Canvas renders the same offline [inspection brief](./docs/demos/inspection-brief.html) that ships with these docs.
+## AIDA chrome modifications
 
-## Deploy in one command
+Beyond the brand artwork and the Canvas, the AIDA deployment adjusts two small chrome details (both reversible by removing the `ui-aida` entry; see `src/client/skin/chrome.ts`):
 
-From the project you want Pi UI to work in:
+- **The trajectory surface and the session-log download live in the Canvas.** The center-column trajectory view — the whole view-ring tab nav (a lone Chat tab once the trajectory tab is gone, so it is removed entirely) and the mounted view — is hidden, and the session header's "Session log" export button (registered by `dsh-session-log-export` into `conversation.session.header.utilities`, matched by label so the Canvas toggle sharing the seat stays) is hidden too. The Canvas trajectory tab renders the trajectory and hosts the download button (React-owned, wired to the `sessionLogDownload` service). React-owned nodes are never moved: hidden nodes stay mounted behind a display toggle.
+- **The workspace vocabulary reads "Project".** In the sidebar workspace region (`sidebar.workspaces`) and the new-session workspace picker (`conversation.hero.workspace`), the labels "Workspaces"/"工作区" render as "Projects"/"项目" (also "Add workspace"/"添加工作区" → "Add project"/"添加项目" and the equivalent aria-label/title/placeholder attributes). Text is rewritten in place by the same observer, so React re-renders with unchanged copy keep the Project wording; the underlying data model, RPC methods, and settings names still say "Workspace". The Canvas copy follows the same vocabulary ("search project files", "this session has no project").
 
-```bash
-cd /path/to/your-project
-npx --yes @whyj/pi-ui@latest install
+## AIDA intranet models
+
+The plugin ships a settings section **内网模型 / Intranet models** with a curated set of intranet-deployed model presets — Ollama, vLLM, One API / New API gateways, and LM Studio — each an OpenAI-compatible provider profile (protocol `openai-completions`, a default loopback endpoint, and a default model list). One click installs a preset into the `llm-pi-ai` settings namespace at `providers.<route>` — the same `settings.mutate` the Models page's custom-provider card performs — after which the provider and its models appear in the composer model picker. Endpoints default to loopback (`127.0.0.1`); after install, the Models page edits the endpoint and model list for the actual intranet host, and a gateway that needs a key gets it through the Models page's credential field. The install writes are revision-guarded, so a route another surface declared meanwhile is refused instead of overwritten; the section is reversible by removing the `ui-aida` entry (installed providers remain in settings until deleted from the Models page).
+
+## Plugin Library Entry
+
+This package is the reusable DSH plugin-library unit for the AIDA identity and Canvas. Its manifest declares both the browser plugin and an installable `dsh.bundle` layer; installing the package adds this Cordis entry as one removable unit:
+
+```yaml
+- id: ui-aida
+  name: '@deepseek-ai/dsh-client-ui-aida'
 ```
 
-That command creates an ignored `.workspace/`, starts the browser UI and Core API, and opens `http://127.0.0.1:4173`. No global install or public server is required. Press `Ctrl+C` to stop; run `npx --yes @whyj/pi-ui@latest start` to return.
+Install a built tarball or the local checkout through the DSH plugin command; the CLI adds this package to the selected profile's bundle stack:
 
-> [!NOTE]
-> Already have Pi on this machine? First launch can explicitly inherit its configured models, authentication, and historical Sessions while keeping the original Session JSONL read-only.
-
-## One minimal UI. A workspace your business can define.
-
-Pi UI is neither an overloaded chat window nor a product screen coupled directly to the Pi SDK. It is a quiet desktop workbench with one strict boundary: the browser talks only to the `core/agent` gateway, while Node Core owns the Pi SDK, credentials, and local filesystem.
-
-Your product adapts the experience through stable contracts:
-
-| Layer | Your product defines | Pi UI preserves |
-| --- | --- | --- |
-| Brand and visual language | `dark`, `zengrid`, or `aida`; brand; locale; complete semantic tokens | One component model, interaction contract, and accessibility baseline |
-| Agent constraints | Context, File, Goal, and Skill Harnesses | Replaceable, testable authorization, persistence, audit, and completion checks |
-| Business capabilities | Workspace Skills and controlled `skill_package` flows | Local-first discovery, lazy expansion, validation before contribution, no implicit overwrite |
-| Artifact experience | Canvas renderers and the Workspace facade | One safe data path across conversations, files, trajectories, and artifacts |
-
-The result is a UI foundation that can live inside different products without giving up its architecture, accessibility, or Pi identity.
-
-## The workflows that matter
-
-### 01 · Harness turns “please do the right thing” into a verifiable contract
-
-A complex task does not start merely because someone types `/goal`. Goal Harness first persists a UserIntent and Goal Contract. Core permits goal creation only after the user confirms the exact `intentId + revision + contractHash`. Completion then passes through a structured audit covering every agreed deliverable, acceptance criterion, constraint, non-goal, and verification step.
-
-See the contract flow and running UI in the [Goal Harness walkthrough (slide 04)](./docs/slides/index.html#slide-04).
-
-- **Context Harness** keeps a stable context prefix, deterministic Tool/Skill ordering, and cache-usage evidence.
-- **File Harness** provides browser-safe file access, Session isolation, and controlled write boundaries.
-- **Goal Harness** aligns intent before execution and keeps background Goals independent from foreground navigation.
-- **Skill Harness** generates and validates a Session-local candidate before it can enter the Workspace Skill root.
-
-### 02 · Follow on the left. Inspect on the right.
-
-Conversation follows the run: ordinary Sessions show a compact trajectory, while Goal Sessions let process recede and results lead. Canvas inspects raw Tool input/output, opens artifacts, previews files, and provides an explicit fullscreen focus mode.
-
-The two sides share context without secretly synchronizing:
-
-- Click a trajectory step to read its latest raw input and output in Canvas.
-- Click a final artifact to open the matching renderer.
-- Start at a balanced 50/50 split; persist user resizing; let `Esc` exit fullscreen without closing the preview.
-- Abort old downloads and clear transient state when switching Sessions, so late responses cannot pollute the new Session.
-
-Both “what the agent did” and “what the artifact is now” remain visible, inspectable, and ready for continued work.
-
-### 03 · Skill Hub is a capability pipeline, not a marketplace pop-up
-
-Skill Hub manages only the current Workspace's local Skills. Catalog reads stay lightweight, full packages load only when opened, and dependency environments are fingerprinted and reused at Workspace scope instead of being copied into every Session.
-
-See the complete validation and packaging sequence in the [Skill Hub walkthrough (slide 06)](./docs/slides/index.html#slide-06).
-
-A strong Agent turn can become a reusable Skill, but the path is deliberately staged:
-
-`Completed turn → Session draft → @SKILL.md validation turn → Name discussion + skill_package`
-
-There is no copied chain of thought, no unconfirmed publishing, and no browser-side remote installation endpoint. Capabilities become reusable without bypassing the trust boundary.
-
-## Restraint means appearing only when needed
-
-Pi UI's primary design principle is **progressive disclosure**: the user chooses the depth; the interface does not compete for attention.
-
-- Workspace begins collapsed and opens only through an artifact, trajectory, or explicit panel action.
-- Raw Tool input/output never floods Conversation; detailed run evidence belongs in Canvas.
-- Secondary answer actions sit behind one hover/focus `···`; compact metrics read `TTFT · TPOT · TPS · IN · OUT · CACHE`.
-- Flat hierarchy uses backgrounds, borders, and spacing—not decorative shadows or glow.
-- Ordinary feedback stays below 300ms and uses interruptible `transform`/`opacity` transitions with complete `prefers-reduced-motion` support.
-- The product is desktop-only; browser zoom preserves the same fluid two-column model instead of turning it into a mobile drawer.
-
-These are product decisions, not missing features: content leads, structure recedes, and every persistent animation must correspond to real running work.
-
-## Deployment and operations
-
-Node.js 20 or newer is required. The one-command path above is the fastest start; for regular use, install the CLI globally:
-
-```bash
-npm install --global @whyj/pi-ui
-piUi install
-piUi doctor
+```sh
+dsh plugin --profile web add ./deepseek-ai-dsh-client-ui-aida-0.1.0-rc.9.tgz
+pnpm dsh plugin --profile web add ./packages/client/ui-aida
 ```
 
-If Pi already exists on the machine, first launch can inherit models, authentication, and historical Sessions from `~/.pi/agent`. Continuing a historical Session creates an application-owned private fork and never rewrites the source JSONL.
+The active deployment lists `ui-aida` under **Settings → Plugins → Plugin list**. `dsh plugin --profile web remove @deepseek-ai/dsh-client-ui-aida` removes the bundle row and browser contribution without changing stored sessions or model-provider settings installed through the Intranet models section. The archive requires a matching DSH Web build that provides the five Workspace file methods described above.
 
-### Common commands
+## Model Experience
 
-```bash
-piUi start                           # Start again
-piUi doctor --json                   # Machine-readable diagnostics
-piUi start --cwd ./work --port 4317  # Choose Workspace and port
-piUi --help
-```
+Indirectly, through Workspace-file references inserted by the Canvas: an `@path` reference embeds capped file content into the submitted prompt, and a quoted selection inserts its literal text as a source-labeled blockquote; no other AIDA copy or Canvas state reaches a model request.
 
-### Define theme, locale, and brand at deployment time
+#### KV Cache effect
 
-Startup configuration is injected before React mounts. It does not require a rebuild and is not stored in browser localStorage:
+None; the plugin does not assemble provider input.
 
-```powershell
-$env:PI_UI_THEME = 'dark'       # dark (default), zengrid, or aida
-$env:PI_UI_LANGUAGE = 'en'      # en (default), zh, or zh-CN
-$env:PI_UI_BRAND = 'pi'         # pi or aida
-piUi start
-```
+## Known Limitations and Deferred Work
 
-Build and run from source:
-
-```bash
-pnpm install
-pnpm build
-pnpm start
-```
-
-> [!IMPORTANT]
-> Pi UI is currently a local desktop workbench, not a public SaaS server. Core accepts only `127.0.0.1`, `localhost`, or `::1`, and browser API calls must pass same-origin validation. Because there is no remote authentication boundary, `0.0.0.0`, LAN, and public-host listening are intentionally rejected.
-
-## Development
-
-Repository boundaries, deliberate trade-offs, source commands, and verification guidance now live in the dedicated [Pi UI development guide](./docs/DEVELOPMENT.md). For the underlying product contracts, see [Architecture](./docs/ARCHITECTURE.md), [UX Principles](./docs/UX.md), and [Design System](./docs/DESIGN.md).
-
----
-
-<div align="center">
-
-**Pi Cooks. You Look busy.**
-
-</div>
+- **Dark mode keeps the neutral surface palette** — AIDA currently adapts its identity accents rather than replacing every dark surface token.
+- **Files has no multi-select ZIP action yet** — rename and delete act on one row at a time; Pi's multi-selection archive flow is not part of this integration.
+- **Office previews are text/sheet only** (no layout fidelity), and a canvas-side "locate in chat" highlight is not shipped.
+- **Mentions degrade to literal `@path` text after a session remount** — like the built-in subagent references, a file mention's chip lives in the live composer state; a draft persisted across a session switch or reload keeps the clipboard text (`@path`) and submits that literal rather than re-embedding the file.
+- **The tool-details takeover is text-level** — the Canvas column shadows the built-in details panel and its trajectory step detail shows args, output text, and produced files, but the per-tool card renderers (terminal, code viewers) do not move into the column; clicking a tool row opens the column without auto-selecting that step in the trajectory.
+- **The center-column trajectory view is hidden** — the Canvas trajectory tab is the trajectory surface; a tool-row "inspect" action that activates the hidden center view leaves the center column blank (the Canvas trajectory tab is one click away).

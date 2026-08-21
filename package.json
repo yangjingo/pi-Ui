@@ -1,78 +1,118 @@
 {
-  "name": "@whyj/pi-ui",
-  "version": "0.2.0",
-  "description": "A local-first Pi agent workspace with a browser UI and one-command startup.",
-  "type": "module",
-  "bin": {
-    "piUi": "bin/pi-ui.js",
-    "pi-ui": "bin/pi-ui.js"
-  },
-  "files": [
-    "bin",
-    "dist",
-    "dist-node",
-    "CHANGELOG.md",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=20"
-  },
-  "keywords": [
-    "pi",
-    "agent",
-    "ai",
-    "workspace",
-    "cli"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/yangjingo/pi-Ui.git"
-  },
-  "bugs": {
-    "url": "https://github.com/yangjingo/pi-Ui/issues"
-  },
-  "homepage": "https://github.com/yangjingo/pi-Ui#readme",
+  "name": "@deepseek-ai/dsh-client-ui-aida",
+  "description": "Installable AIDA identity and Workspace Canvas bundle for dsh Web",
+  "version": "0.1.0-rc.9",
   "publishConfig": {
     "access": "public"
   },
-  "scripts": {
-    "dev": "vite",
-    "test:boundaries": "tsx --test tests/core/source-boundaries.test.ts",
-    "check:boundaries": "pnpm test:boundaries",
-    "build": "pnpm check:boundaries && tsc -p tsconfig.json && vite build && vite build --config vite.cli.config.ts",
-    "start": "node bin/pi-ui.js start --no-open",
-    "typecheck": "pnpm check:boundaries && tsc -p tsconfig.json && tsc -p src/core/tsconfig.json && tsc -p tests/tsconfig.json",
-    "test": "pnpm test:modules && playwright test",
-    "test:modules": "tsx --test tests/core/*.test.ts tests/harness/*.test.ts tests/ui/*.test.ts tests/workspace/*.test.ts",
-    "test:core": "tsx --test tests/core/*.test.ts",
-    "test:harness": "tsx --test tests/harness/*.test.ts",
-    "test:ui": "tsx --test tests/ui/*.test.ts",
-    "test:workspace": "tsx --test tests/workspace/*.test.ts",
-    "test:canvas": "playwright test tests/canvas",
-    "test:e2e": "playwright test tests/e2e",
-    "verify": "pnpm typecheck && pnpm test",
-    "prepack": "pnpm build",
-    "prepublishOnly": "pnpm verify"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/client/ui-aida"
   },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "external": [
+        "@deepseek-ai/dsh-client-ui-trajectory/client"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-input-trigger",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-trajectory",
+        "@deepseek-ai/dsh-client-connection"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "bundle": "tsdown",
+    "watch": "tsdown --watch"
+  },
+  "license": "MIT",
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.80.10",
-    "@earendil-works/pi-coding-agent": "^0.80.10",
-    "dotenv": "^17.4.2",
-    "pi-codex-goal": "0.1.38",
-    "typebox": "^1.1.38"
+    "fflate": "^0.8.2",
+    "lucide-react": "^1.32.0",
+    "mermaid": "^11.16.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-api-remotes": "workspace:^",
+    "@deepseek-ai/dsh-client-connection": "workspace:^",
+    "@deepseek-ai/dsh-client-locale": "workspace:^",
+    "@deepseek-ai/dsh-client-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-conversation": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-layout": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-settings": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-sidebar": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-theme": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-trajectory": "workspace:^",
+    "@deepseek-ai/dsh-host-webserver": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@deepseek-ai/cordis": "workspace:^"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
-    "@types/node": "^26.1.1",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "fflate": "^0.8.3",
-    "mermaid": "^11.16.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tsx": "^4.23.1",
-    "typescript": "^5.5.3",
-    "vite": "^5.3.4"
-  }
+    "@deepseek-ai/dsh-api-remotes": "workspace:^",
+    "@deepseek-ai/dsh-client-connection": "workspace:^",
+    "@deepseek-ai/dsh-client-locale": "workspace:^",
+    "@deepseek-ai/dsh-client-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-test-runtime": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-conversation": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-layout": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-settings": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-sidebar": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-theme": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-trajectory": "workspace:^",
+    "@deepseek-ai/dsh-host-webserver": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-workspace": "workspace:^",
+    "@types/react": "~18.3.1",
+    "@deepseek-ai/cordis": "workspace:^",
+    "react": "^18.2.0",
+    "mermaid": "^11.16.0"
+  },
+  "files": [
+    "assets/*.svg",
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ]
 }

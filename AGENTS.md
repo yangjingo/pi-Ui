@@ -1,80 +1,59 @@
-# Repository Guidelines
+# AIDA UI Agent Guide
 
-## Project Structure & Module Organization
+This repository is the source of truth for the DSH AIDA UI plugin. Keep AIDA-specific UI, host methods, documentation, and release assets here. Treat a DSH checkout as an integration target, not as a second implementation of the plugin.
 
-This is a two-layer Pi agent workspace. `src/` has five module directories: `core/` owns the Agent loop and gateway, `harness/` owns reusable constraints, `ui/` owns styles/theme/language primitives, `canvas/` owns panels and renderers, and `workspace/` owns files, models, Skills, Sessions, and browser application state. Keep browser code dependent only on the `core/agent` gateway; never import Pi SDK packages into the UI bundle. Read `docs/ARCHITECTURE.md` before moving code across these boundaries. Read `docs/UX.md` and `docs/DESIGN.md` before changing interaction behavior or visual styling.
+## Required design skills
 
-`tests/core/`, `tests/harness/`, `tests/ui/`, `tests/canvas/`, and `tests/workspace/` mirror the five source boundaries. `tests/e2e/` contains cross-module browser regressions, while `tests/fixtures/` contains shared test infrastructure. `docs/` holds product and design references. Runtime data belongs in ignored `.workspace/`, never in committed source.
+Before changing React UI, CSS, layout, icons, loading states, or transitions, read both repository-local skills:
 
-## Product Direction & Project Skills
+- `.agent/taste-skill/SKILL.md`: use it for the audit-first design read, visual hierarchy, consistency checks, and anti-slop review.
+- `.agent/amicro-design-system/SKILL.md`: use its micro-transition principles, motion easing, state-transition patterns, and reduced-motion discipline.
 
-The project's first product objective is to build a tasteful Pi UI that can be integrated into
-other products without weakening its architecture, accessibility, or visual identity. Local
-contracts always take precedence over third-party Skills: `docs/ARCHITECTURE.md` defines integration
-boundaries, `docs/UX.md` defines interaction, and `docs/DESIGN.md` defines the visual system.
+Apply the skills contextually. AIDA is a dense developer tool embedded in DSH, not an Amicro catalog or a marketing page. Existing DSH primitives, semantic `--dsw-*` tokens, typography, localization, and component behavior take precedence over the skills' example palettes, fonts, cards, haptics, or framework-specific snippets.
 
-Project Skills are committed under `.agents/skills/` and pinned in `skills-lock.json`. Use them as
-focused reviewers, not as competing product specifications:
+For normal AIDA work, declare this design read before editing:
 
-- For new UI direction, use
-  [`design-taste-frontend`](./.agents/skills/design-taste-frontend/SKILL.md). For an existing screen
-  or flow, prefer
-  [`redesign-existing-projects`](./.agents/skills/redesign-existing-projects/SKILL.md). Do not apply
-  `minimalist-ui`, `industrial-brutalist-ui`, `high-end-visual-design`, or another style variant
-  unless the user explicitly chooses that direction.
-- Use [`emil-design-eng`](./.agents/skills/emil-design-eng/SKILL.md) for interaction polish and
-  [`review-animations`](./.agents/skills/review-animations/SKILL.md) for motion review. These Skills
-  supplement the repository's easing, duration, pointer, and reduced-motion constraints.
-- Use [`shadcn`](./.agents/skills/shadcn/SKILL.md) for accessible composition and integration
-  patterns. It does not authorize introducing Tailwind, replacing the Pi UI theme, or bypassing the
-  five-module boundary without an explicit task decision.
-- Use the GSAP suite beginning with
-  [`gsap-core`](./.agents/skills/gsap-core/SKILL.md),
-  [`gsap-react`](./.agents/skills/gsap-react/SKILL.md), and
-  [`gsap-performance`](./.agents/skills/gsap-performance/SKILL.md) only when a task genuinely needs
-  timelines, scroll-linked motion, or runtime animation control. Ordinary UI feedback should remain
-  lightweight CSS transitions under 300 ms.
-- Use [`lieflat-charts`](./.agents/skills/lieflat-charts/SKILL.md) for editorial data visualization.
-  Its bundled PolyForm Noncommercial license must be checked before using its templates or assets in
-  a commercial deliverable.
+> Conservative developer-tool refinement for frequent users. Preserve DSH's compact visual language. Use DESIGN_VARIANCE 3, MOTION_INTENSITY 2, and VISUAL_DENSITY 6.
 
-The remaining installed Skills are discoverable from their `SKILL.md` frontmatter. Never combine
-multiple taste/style Skills by default; select the smallest set that fits the task and state which
-local product contract resolves any conflict.
+## Design contract
 
-## Build, Test, and Development Commands
+Follow [`docs/design-language.md`](docs/design-language.md) for the complete contract. The CANVAS toolbar baseline is mandatory:
 
-Use pnpm on Windows; npm can exceed the Pi SDK dependency path limit.
+- Toolbar: `40px` high, `8px` horizontal padding, `6px` control gap.
+- Labels: `12px`; icons: `14px`.
+- Compact controls: `26px`; search and import controls: `28px`.
+- Control radius: `4px`; input and grouped-control radius: `6px`.
+- Use DSH primitive icons first. Do not draw replacement SVG paths or use emoji as controls.
+- Keep Files, Trajectory, and Canvas preview toolbars visually aligned.
 
-```bash
-pnpm install                         # install dependencies
-pnpm dev                             # Vite plus Core API middleware on :5173
-pnpm typecheck                       # TypeScript and source-boundary checks
-pnpm build                           # boundary check, TypeScript, production bundle
-pnpm build && pnpm start             # serve production UI and API
-pnpm test:modules                    # Core/Harness/UI/Workspace module tests
-pnpm test:canvas                     # run the focused Canvas regression module
-pnpm test:e2e                        # run cross-module browser regressions
-```
+## React and motion
 
-Run `pnpm typecheck` before every handoff and `pnpm build` when changing runtime, bundling, or public UI boundaries.
+- Implement plugin UI in React and keep ownership inside React; do not move React-owned DOM nodes with imperative scripts.
+- Animate state changes only when motion explains loading, hierarchy, continuity, or feedback.
+- Prefer opacity and small transforms, normally `160-220ms`, with the Amicro easing `[0.16, 1, 0.3, 1]` where it fits DSH.
+- Do not animate toolbar geometry, persistent layout dimensions, or routine hover position.
+- Provide a static or near-instant fallback under `prefers-reduced-motion: reduce`.
+- Avoid adding a motion dependency when CSS or an existing runtime primitive is sufficient.
 
-## Coding Style & Naming Conventions
+## Localization and accessibility
 
-Write TypeScript and React with two-space indentation, semicolons, and named components such as `ModelPanel`. Use PascalCase for components, camelCase for functions/state, and kebab-case for test IDs and CSS utility names. Keep shared contracts in `src/core/agent/protocol.ts`; keep Node/Pi-specific code out of UI modules. Treat `docs/DESIGN.md` as the visual contract and `docs/UX.md` as the interaction contract: dark is the default theme, ZenGrid is optional, and both use the same semantic tokens and behavior. Use easing tokens, transform/opacity transitions under 300 ms, pointer-gated hover states, and reduced-motion support.
+- Every user-visible string, tooltip, `title`, `aria-label`, placeholder, empty state, and error message must use the plugin locale layer.
+- Add Chinese and English keys together. Never fix one locale by hardcoding the other.
+- Icon-only actions require an accessible label and tooltip.
+- Preserve visible keyboard focus and native keyboard behavior.
 
-## Testing Guidelines
+## Integration boundaries
 
-Validate module behavior under the matching `tests/{core,harness,ui,canvas,workspace}/` boundary. Put only cross-module user flows under `tests/e2e/`, and add or update a test when fixing a regression. Tests should print clear pass/fail output and target local Vite ports. Pi UI is desktop-only: verify the normal 1280px-or-greater desktop viewport and zoom-compressed effective viewports, plus keyboard focus, Canvas behavior, and error/loading states. Browser zoom must keep the same fluid two-column desktop model without page-level horizontal overflow. Do not add phone, touch, coarse-pointer, mobile drawer, or mobile navigation compatibility.
+- Reuse the DSH `ui-trajectory` view inside CANVAS. Change its entry or containing toolbar only when necessary; do not fork or recreate Trajectory in AIDA.
+- Prefer DSH slots, services, primitives, and semantic tokens over copied components.
+- Keep plugin removal reversible: core conversation, session, workspace, and trajectory behavior must recover when `ui-aida` is removed.
+- Deep-import optional icon modules when required by the DSH client bundler; avoid dependency patterns that introduce runtime externals drift.
+- Update English and Chinese documentation whenever behavior or visible language changes.
 
-## Commit & Pull Request Guidelines
+## Working scope
 
-History uses short imperative subjects (for example, `Add CLAUDE.md`). Keep commits focused and describe the user-visible change. PRs should include a concise summary, verification commands/results, linked issue when available, and screenshots or recordings for visual changes. Do not commit `.env`, API keys, generated runtime data, or workspace contents.
+- Canonical plugin: `C:\Users\yangjing\Project\dsh-plugin\aida-ui`
+- DSH integration checkout: `C:\Users\yangjing\Project\dsh-aida-deploy`
+- Local review URL: `http://127.0.0.1:3080`
 
-## Security & Configuration
-
-Keep provider credentials server-side and out of `VITE_*` variables. Treat `.workspace/` and its settings JSON as local runtime configuration. Sanitize files and URLs passed from the UI before Core performs filesystem or network work.
-
-## Agent Execution Principle
-
-Exercise restraint: implement the smallest change that satisfies the agreed goal. Before starting work, clarify the goal, scope, acceptance criteria, and any meaningful trade-offs with the user. Do not expand the feature set, refactor adjacent areas, or make irreversible changes unless the user explicitly includes them in scope.
+Do not commit generated integration copies as independent AIDA source. Build and synchronize them only for DSH integration verification.
