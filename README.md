@@ -2,6 +2,91 @@
 
 English | [中文](README.zh.md)
 
+![AIDA personal terminal running in DSH](docs/assets/aida-slides-brand-surface.png)
+
+## Standard DSH Plugin Installation
+
+This repository distributes AIDA as a **prebuilt npm archive**, not as an npm Registry release. Install the `.tgz` through the DSH profile command so DSH can record the dependency and activate the package's `dsh.bundle.patch` layer. Do not use `npm install`, do not run `npm publish`, and do not edit the generated profile `package.json` or Cordis composition by hand.
+
+### Naming contract
+
+| Item | Value |
+| --- | --- |
+| Package name | `@aida/aida-ui-dsh` |
+| DSH bundle id | `ui-aida` |
+| Target profile | `web` |
+| Archive version | `0.1.0-rc.10` |
+| Archive file | `aida-aida-ui-dsh-0.1.0-rc.10.tgz` |
+| Release branch | `aida-dsh` |
+
+### Human installation
+
+Prerequisites: the `dsh` CLI and `pnpm` must be available on `PATH`, and the target DSH Web build must provide the Workspace APIs required by AIDA Canvas.
+
+1. Download [`aida-aida-ui-dsh-0.1.0-rc.10.tgz`](https://github.com/yangjingo/pi-Ui/raw/refs/heads/aida-dsh/releases/aida-aida-ui-dsh-0.1.0-rc.10.tgz).
+2. Verify the archive before installation.
+
+```text
+SHA-256  45B6D4836DF30A1CB4AC8F585CFC6FC77B8ADBDB5FAB1D72B135CA17550F1BE2
+```
+
+PowerShell:
+
+```powershell
+(Get-FileHash .\aida-aida-ui-dsh-0.1.0-rc.10.tgz -Algorithm SHA256).Hash
+```
+
+POSIX shell:
+
+```sh
+echo "45B6D4836DF30A1CB4AC8F585CFC6FC77B8ADBDB5FAB1D72B135CA17550F1BE2  aida-aida-ui-dsh-0.1.0-rc.10.tgz" | sha256sum -c -
+```
+
+3. Install the archive into the standard DSH Web profile.
+
+```sh
+dsh plugin --profile web add ./aida-aida-ui-dsh-0.1.0-rc.10.tgz
+```
+
+4. Restart the Web profile.
+
+```sh
+dsh web
+```
+
+5. Open **Settings → Plugins → Plugin list** and confirm that `ui-aida` / `@aida/aida-ui-dsh` is active. A new session should show the AIDA personal-terminal surface and the Canvas entry.
+
+To inspect why the package is installed:
+
+```sh
+dsh plugin --profile web why @aida/aida-ui-dsh
+```
+
+To remove the plugin without deleting sessions or project files:
+
+```sh
+dsh plugin --profile web remove @aida/aida-ui-dsh
+```
+
+### Agent installation protocol
+
+An automation agent installing this plugin must follow the same profile-bundle boundary as a human operator:
+
+1. Resolve the downloaded `.tgz` to an absolute local path.
+2. Calculate SHA-256 and require an exact match with the value above.
+3. Run `dsh plugin --profile web add <absolute-tarball-path>` from the user's normal shell.
+4. Never unpack files into the DSH source tree, never edit `$DSH_HOME/profiles/web/package.json`, and never append `cordis.patch.yml` rows manually.
+5. Restart the `web` profile after installation.
+6. Confirm the dependency with `dsh plugin --profile web why @aida/aida-ui-dsh`, then verify `ui-aida` in the Plugin list.
+7. Report the installed package name, archive version, checksum, profile, and verification result to the human operator.
+
+For local plugin development, install the checkout itself instead of the archive:
+
+```sh
+cd /path/to/aida-ui-dsh
+dsh plugin --profile web add .
+```
+
 Design and maintenance references: [AIDA UI design language](docs/design-language.md), [integration documentation](docs/README.md), and [agent guidance](AGENTS.md). UI changes are governed by the repository-local TASTE and Amicro skills, adapted to DSH's native primitives and semantic tokens.
 
 AIDA is a browser-only deployment skin plus Canvas for the dsh Web client. The main interface keeps PIUI's existing new-session layout, replaces the expanded and collapsed sidebar artwork with one AIDA logo through `sidebar.brand` and `sidebar.mark`, and replaces the new-session brand lockup through `conversation.hero.brand` with `Logo | AIDA`, the `DELIVERY INTELLIGENCE` descriptor, the localized project-delivery slogan, and the Preview label. It changes presentation only: agent composition, tools, prompts, session behavior, and durable data remain untouched.
@@ -55,8 +140,8 @@ This package is the reusable DSH plugin-library unit for the AIDA identity and C
 Install a built tarball or the local checkout through the DSH plugin command; the CLI adds this package to the selected profile's bundle stack:
 
 ```sh
-dsh plugin --profile web add ./aida-aida-ui-dsh-0.1.0-rc.10.tgz
-pnpm dsh plugin --profile web add ./packages/client/ui-aida
+dsh plugin --profile web add ./releases/aida-aida-ui-dsh-0.1.0-rc.10.tgz
+dsh plugin --profile web add .
 ```
 
 The active deployment lists `ui-aida` under **Settings → Plugins → Plugin list**. `dsh plugin --profile web remove @aida/aida-ui-dsh` removes the bundle row and browser contribution without changing stored sessions or model-provider settings installed through the Intranet models section. The archive requires a matching DSH Web build that provides the five Workspace file methods described above.
