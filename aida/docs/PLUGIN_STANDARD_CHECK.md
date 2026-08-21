@@ -9,7 +9,7 @@ AIDA 相关改动符合 DSH 客户端插件标准格式。
 | 检查项 | 结果 |
 |---|---|
 | 独立插件目录 | ✅ `packages/client/ui-aida` |
-| 包元数据 | ✅ `package.json`，包名 `@deepseek-ai/dsh-client-ui-aida` |
+| 包元数据 | ✅ `package.json`，包名 `@aida/aida-ui-dsh` |
 | DSH 插件声明 | ✅ `dsh.client.inject` + `platform: "web"` |
 | 插件入口 | ✅ `src/client/index.ts` 导出 `apply(ctx)` |
 | 资源注册 | ✅ locale、theme、slots、settings |

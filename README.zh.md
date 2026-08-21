@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-ui-aida
+# @aida/aida-ui-dsh
 
 [English](README.md) | 中文
 
@@ -49,17 +49,17 @@ AIDA 是 dsh Web 客户端的纯浏览器端部署皮肤与画布。主界面保
 
 ```yaml
 - id: ui-aida
-  name: '@deepseek-ai/dsh-client-ui-aida'
+  name: '@aida/aida-ui-dsh'
 ```
 
 通过 DSH 插件命令安装构建后的 tarball 或本地 checkout；CLI 会把本包加入所选 profile 的 bundle 栈：
 
 ```sh
-dsh plugin --profile web add ./deepseek-ai-dsh-client-ui-aida-0.1.0-rc.9.tgz
+dsh plugin --profile web add ./aida-aida-ui-dsh-0.1.0-rc.10.tgz
 pnpm dsh plugin --profile web add ./packages/client/ui-aida
 ```
 
-激活后的部署会在 **设置 → 插件 → 插件列表** 中列出 `ui-aida`。`dsh plugin --profile web remove @deepseek-ai/dsh-client-ui-aida` 会移除 bundle 条目与浏览器贡献，但不改变已存会话，也不删除通过“内网模型”页签安装的模型提供方设置。该归档需要匹配的 DSH Web 构建提供上文五个 Workspace 文件方法。
+激活后的部署会在 **设置 → 插件 → 插件列表** 中列出 `ui-aida`。`dsh plugin --profile web remove @aida/aida-ui-dsh` 会移除 bundle 条目与浏览器贡献，但不改变已存会话，也不删除通过“内网模型”页签安装的模型提供方设置。该归档需要匹配的 DSH Web 构建提供上文五个 Workspace 文件方法。
 
 ## 模型体验
 

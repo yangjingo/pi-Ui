@@ -6,7 +6,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry, createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ISessions, SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import { ThemeRuntime, type ThemeSettings } from '@deepseek-ai/dsh-client-ui-theme/client'
-import { apply, inject } from '@deepseek-ai/dsh-client-ui-aida/client'
+import { apply, inject } from '@aida/aida-ui-dsh/client'
 
 vi.mock('@deepseek-ai/dsh-client-ui-trajectory/client', async () => {
   const { createTrajectoryDurationStore } = await import(

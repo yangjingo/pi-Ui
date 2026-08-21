@@ -4,12 +4,12 @@ import { cleanup, render } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   AidaMark, AidaSidebarBrand, AidaSidebarMark, type AidaSidebarBrandProps,
-} from '@deepseek-ai/dsh-client-ui-aida/src/client/AidaBrand.tsx'
+} from '@aida/aida-ui-dsh/src/client/AidaBrand.tsx'
 import {
   AidaHeroBrand, type AidaHeroBrandProps,
-} from '@deepseek-ai/dsh-client-ui-aida/src/client/AidaHeroBrand.tsx'
-import { zh } from '@deepseek-ai/dsh-client-ui-aida/src/client/locales.ts'
-import { AIDA_TOKENS } from '@deepseek-ai/dsh-client-ui-aida/client'
+} from '@aida/aida-ui-dsh/src/client/AidaHeroBrand.tsx'
+import { zh } from '@aida/aida-ui-dsh/src/client/locales.ts'
+import { AIDA_TOKENS } from '@aida/aida-ui-dsh/client'
 
 vi.mock('@deepseek-ai/dsh-client-ui-trajectory/client', async () => {
   const { createTrajectoryDurationStore } = await import(

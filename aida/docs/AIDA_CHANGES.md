@@ -27,7 +27,7 @@
 
 路径：`packages/client/ui-aida`
 
-包名：`@deepseek-ai/dsh-client-ui-aida`
+包名：`@aida/aida-ui-dsh`
 
 主要能力：
 

@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-ui-aida
+# @aida/aida-ui-dsh
 
 English | [中文](README.zh.md)
 
@@ -49,17 +49,17 @@ This package is the reusable DSH plugin-library unit for the AIDA identity and C
 
 ```yaml
 - id: ui-aida
-  name: '@deepseek-ai/dsh-client-ui-aida'
+  name: '@aida/aida-ui-dsh'
 ```
 
 Install a built tarball or the local checkout through the DSH plugin command; the CLI adds this package to the selected profile's bundle stack:
 
 ```sh
-dsh plugin --profile web add ./deepseek-ai-dsh-client-ui-aida-0.1.0-rc.9.tgz
+dsh plugin --profile web add ./aida-aida-ui-dsh-0.1.0-rc.10.tgz
 pnpm dsh plugin --profile web add ./packages/client/ui-aida
 ```
 
-The active deployment lists `ui-aida` under **Settings → Plugins → Plugin list**. `dsh plugin --profile web remove @deepseek-ai/dsh-client-ui-aida` removes the bundle row and browser contribution without changing stored sessions or model-provider settings installed through the Intranet models section. The archive requires a matching DSH Web build that provides the five Workspace file methods described above.
+The active deployment lists `ui-aida` under **Settings → Plugins → Plugin list**. `dsh plugin --profile web remove @aida/aida-ui-dsh` removes the bundle row and browser contribution without changing stored sessions or model-provider settings installed through the Intranet models section. The archive requires a matching DSH Web build that provides the five Workspace file methods described above.
 
 ## Model Experience
 

@@ -49,7 +49,7 @@ declare module '@deepseek-ai/cordis' {
 /** Services required by the AIDA browser skin, Canvas, and intranet models. */
 export const inject = ['slots', 'locale', 'theme', 'workspaces', 'sessions', 'connection', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload']
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-aida'
+const PACKAGE_NAME = '@aida/aida-ui-dsh'
 
 /**
  * Activate the AIDA identity tokens, brand takeovers, and the Canvas drawer

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "aida-ui",
-  "package": "@deepseek-ai/dsh-client-ui-aida",
-  "version": "0.1.0-rc.9",
+  "package": "@aida/aida-ui-dsh",
+  "version": "0.1.0-rc.10",
   "kind": "dsh-bundle",
   "bundleId": "ui-aida",
   "patch": "cordis.patch.yml",
@@ -19,7 +19,7 @@
     "conversation.chat.loading"
   ],
   "projectMaterials": "aida/",
-  "release": "releases/deepseek-ai-dsh-client-ui-aida-0.1.0-rc.9.tgz",
-  "sha256": "3905F9FA110593D0CF4043704D01AA7D4D278D00A72F909C3B07B98CE467A76F",
-  "archivedAt": "2026-08-17"
+  "release": "releases/aida-aida-ui-dsh-0.1.0-rc.10.tgz",
+  "sha256": "45B6D4836DF30A1CB4AC8F585CFC6FC77B8ADBDB5FAB1D72B135CA17550F1BE2",
+  "archivedAt": "2026-08-21"
 }
