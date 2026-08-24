@@ -57,3 +57,18 @@ Follow [`docs/design-language.md`](docs/design-language.md) for the complete con
 - Local review URL: `http://127.0.0.1:3080`
 
 Do not commit generated integration copies as independent AIDA source. Build and synchronize them only for DSH integration verification.
+
+## Version synchronization
+
+The plugin release version MUST track the official DSH platform version this
+plugin is built against. Keep the numbers in sync, prerelease tags included.
+
+- Source of truth: the DSH platform version resolved by the active profile
+  (`@deepseek-ai/dsh-base` / `@deepseek-ai/dsh-web-app` / `@deepseek-ai/dsh`).
+- Rule: `version` in `package.json` equals the DSH platform version. When DSH
+  moves to `0.1.1-rc.2`, the plugin bumps to `0.1.1-rc.2` in the same change.
+- Release archives under `releases/` are named with the same version
+  (`aida-aida-ui-dsh-<version>.tgz`).
+- When the integration target moves, record the version-sync target, the
+  compatibility changes, and any platform-side patches in `docs/PRD.md`.
+- Never bump the plugin version ahead of the DSH platform it targets.
