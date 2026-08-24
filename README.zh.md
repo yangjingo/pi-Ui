@@ -2,6 +2,10 @@
 
 [English](README.md) | 中文
 
+> 本仓库追踪 `aida-dsh` 分支。该分支由 `git@github.com:yangjingo/pi-Ui.git`
+> 的提交 `79b72eb` 迁移而来，后续通过
+> `ssh://git@codehub-dg-g.huawei.com:2222/y00842095/aida-ui-dsh.git` 进行追踪与更新。
+
 设计与维护入口：[AIDA UI 设计语言](docs/design-language.md)、[集成文档](docs/README.md)和[代理协作规范](AGENTS.md)。UI 改动由项目内置的 TASTE 与 Amicro 技能共同约束，并以 DSH 原生组件和语义 token 为最终实现基线。
 
 AIDA 是 dsh Web 客户端的纯浏览器端部署皮肤与画布。主界面保留 PIUI 现有的新会话布局，通过 `sidebar.brand` 与 `sidebar.mark` 把展开和收起侧边栏的图形替换为同一个 AIDA Logo，并通过 `conversation.hero.brand` 把新会话品牌组合替换为 `Logo | AIDA`、`DELIVERY INTELLIGENCE` 定位语、本地化项目交付标语与“预览版”标签。它只改变呈现：agent 组合、工具、提示词、会话行为与持久化数据都不受影响。

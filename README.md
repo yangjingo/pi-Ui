@@ -2,6 +2,10 @@
 
 English | [中文](README.zh.md)
 
+> This repository tracks the `aida-dsh` branch. It was migrated from
+> `git@github.com:yangjingo/pi-Ui.git` (commit `79b72eb`) and is now maintained
+> and updated through `ssh://git@codehub-dg-g.huawei.com:2222/y00842095/aida-ui-dsh.git`.
+
 ![AIDA personal terminal running in DSH](docs/assets/aida-slides-brand-surface.png)
 
 ## Standard DSH Plugin Installation
