@@ -89,6 +89,12 @@ export interface AidaCanvasInjected extends AidaCanvasFileOps {
    */
   closeCanvas: () => void
   /**
+   * Open the right-hand column (the frame's details track). The DSH rc.2
+   * frame keeps the details track session-scoped and closes it on session
+   * switches, so the panel re-opens it whenever it mounts for a session.
+   */
+  openCanvas: () => void
+  /**
    * Insert a workspace-file mention chip (`@path`) at the end of the current
    * session's composer draft; the chip embeds the file content on submit.
    * @param path - POSIX-relative path within the session's workspace root.

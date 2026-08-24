@@ -114,6 +114,7 @@ export function AidaCanvasPanel(props: AidaCanvasPanelProps) {
   const {
     useSession, useSessions, sessionId, useStore, actions, t,
     listFiles, readFile, writeFile, renameFile, moveFile, deleteFile, closeCanvas,
+    openCanvas,
     useTrajectoryDuration, loadTrajectoryOlder, setTrajectoryActualDuration, trajectoryT, downloadSessionLog,
     mentionFile, quoteSelection,
   } = props
@@ -164,6 +165,19 @@ export function AidaCanvasPanel(props: AidaCanvasPanelProps) {
     dragDepth.current = 0
     return () => { uploadAbortRef.current?.abort() }
   }, [sessionId, cwd, actions])
+
+  // The DSH rc.2 frame keeps the details track session-scoped and closes it
+  // when the session changes. Re-open the Canvas column whenever this panel
+  // mounts for a session (initial open and session switches). A manual close
+  // via the panel's ✕ keeps the column closed because sessionId is unchanged.
+  useEffect(() => {
+    if (sessionId === undefined) return
+    try {
+      openCanvas()
+    } catch {
+      // Layout panel actions not wired yet; the next session render retries.
+    }
+  }, [sessionId, openCanvas])
 
   // Maximize truly collapses the conversation: the frame grid becomes
   // `<sidebar> 0 <rest>` (the center track goes to zero) and the canvas stays

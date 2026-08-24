@@ -122,6 +122,7 @@ export function apply(ctx: ClientContext): void {
       trajectoryT: ctx.locale.bind('trajectory'),
       downloadSessionLog: () => ctx.sessionLogDownload.download(sessionId),
       closeCanvas: closeColumn,
+      openCanvas: openColumn,
       // The composer draft is per-session, so the 引用 actions route through the
       // conversation service's session shell.
       mentionFile: path => mentionFileIntoComposer(ctx, path),
@@ -144,8 +145,12 @@ export function apply(ctx: ClientContext): void {
     try {
       openColumn()
     } catch {
-      if (attempt < 20) {
-        globalThis.setTimeout(() => openCanvasWhenReady(attempt + 1), 50)
+      // rc.2 boots the client shell asynchronously; the layout panel actions
+      // may not be wired for several seconds. Keep retrying well past the
+      // first render so the Canvas column opens by default once a session
+      // exists (the panel's own session-mount effect is the reliable path).
+      if (attempt < 200) {
+        globalThis.setTimeout(() => openCanvasWhenReady(attempt + 1), 100)
       }
     }
   }
