@@ -2,9 +2,10 @@
 
 [English](README.md) | 中文
 
-> 本仓库追踪 `aida-dsh` 分支。该分支由 `git@github.com:yangjingo/pi-Ui.git`
-> 的提交 `79b72eb` 迁移而来，后续通过
-> `ssh://git@codehub-dg-g.huawei.com:2222/y00842095/aida-ui-dsh.git` 进行追踪与更新。
+> 本仓库内容由 `git@github.com:yangjingo/pi-Ui.git` 的 `aida-dsh` 分支
+> （提交 `79b72eb`）迁移而来，现于
+> `ssh://git@codehub-dg-g.huawei.com:2222/y00842095/aida-ui-dsh.git` 的
+> `master` 分支上维护与更新。
 
 设计与维护入口：[AIDA UI 设计语言](docs/design-language.md)、[集成文档](docs/README.md)和[代理协作规范](AGENTS.md)。UI 改动由项目内置的 TASTE 与 Amicro 技能共同约束，并以 DSH 原生组件和语义 token 为最终实现基线。
 
