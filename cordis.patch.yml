@@ -1,4 +1,8 @@
-# Install the complete AIDA browser identity and Canvas as one removable DSH bundle row.
+# Install the DSH Pet runtime and complete AIDA browser identity as one bundle.
+# AIDA ships one custom pet pack only: healing-whale-hit.
 - insert:
+    - id: pet
+      name: '@linxin666/dsh-pet'
+
     - id: ui-aida
       name: '@aida/aida-ui-dsh'

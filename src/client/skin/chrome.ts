@@ -3,8 +3,9 @@
  * owns, driven by one document MutationObserver. Two behaviors:
  *
  * 1. The trajectory surface lives in the Canvas — the center-column
- *    trajectory view and its view-ring tab are hidden. The original session
- *    header utilities remain available.
+ *    trajectory view and its view-ring tab are hidden. Its session-log action
+ *    is relocated into the Canvas trajectory toolbar, while unrelated header
+ *    utilities remain available.
  *
  * 2. Project vocabulary — the sidebar workspace region and the hero
  *    workspace picker present the "Project" concept instead of "Workspace"
@@ -170,8 +171,8 @@ export function applyComposerPlaceholderOnce(root: ParentNode): boolean {
 
 /**
  * Reconcile the whole chrome: hide the center-column trajectory surface (the
- * lone view-ring tab nav and any mounted trajectory view outside the canvas)
- * and apply the Project vocabulary.
+ * lone view-ring tab nav, its session-log action, and any mounted trajectory
+ * view outside the canvas) and apply the Project vocabulary.
  * @param root - document root.
  * @returns true when the DOM changed.
  */

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // AIDA chrome skin: the Project vocabulary mapping, the hidden center-column
-// trajectory surface (view-ring tab + mounted view), the preserved session-log
-// header button, and the combined reconciliation.
+// trajectory surface (view-ring tab + mounted view), the relocated session-log
+// header action, and the combined reconciliation.
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import {
@@ -111,11 +111,11 @@ describe('trajectory surface hiding', () => {
     expect(outside.style.display).toBe('none')
   })
 
-  it('keeps the original session-log header button and canvas toggle visible', () => {
+  it('hides the original session-log header button and preserves the canvas toggle', () => {
     const root = document.createElement('div')
     const { log, toggle } = utilitiesSeat(root)
-    expect(reconcileChrome(root)).toBe(false)
-    expect(log.style.display).toBe('')
+    expect(reconcileChrome(root)).toBe(true)
+    expect(log.style.display).toBe('none')
     expect(toggle.style.display).toBe('')
   })
 
@@ -127,12 +127,12 @@ describe('trajectory surface hiding', () => {
     expect(reconcileChrome(root)).toBe(false)
   })
 
-  it('locates but preserves the zh session-log label', () => {
+  it('locates and hides the zh session-log label', () => {
     const root = document.createElement('div')
     const { log } = utilitiesSeat(root, '会话日志')
     expect(findSessionLogButtons(root)).toEqual([log])
-    expect(reconcileChrome(root)).toBe(false)
-    expect(log.style.display).toBe('')
+    expect(reconcileChrome(root)).toBe(true)
+    expect(log.style.display).toBe('none')
   })
 
   it('reconciles the Project vocabulary through the scope slots', () => {
@@ -162,7 +162,7 @@ describe('trajectory surface hiding', () => {
     root.appendChild(document.createElement('b'))
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(tablist.style.display).toBe('none')
-    expect(log.style.display).toBe('')
+    expect(log.style.display).toBe('none')
     stop()
     root.remove()
   })

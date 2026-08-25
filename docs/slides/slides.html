@@ -271,7 +271,7 @@
     <section class="slide cover active">
       <div class="cover-brand"><img src="../../assets/brand-logo-light.svg" alt="AIDA"><span>AIDA</span></div>
       <h1>你的交付态势<br><span class="accent">导航仓</span></h1>
-      <p class="lead">一个可安装到 DSH 的 React UI 插件，让文件、轨迹与产物围绕当前会话工作。</p>
+      <p class="lead">一个可安装到 DSH 的 React UI 插件，让文件、轨迹、产物与陪伴角色围绕当前会话工作。</p>
       <p class="cover-meta">AIDA UI FOR DSH / PRODUCT DECK / PREVIEW</p>
       <div class="cover-stamp" aria-hidden="true">EVERYTHING<br>IS<br>PLUGIN</div>
       <a class="citation" href="../../README.zh.md" target="_blank" rel="noopener">README.zh.md</a>
@@ -288,22 +288,38 @@
       <header class="slide-head"><div class="brand-row"><img src="../../assets/brand-logo-light.svg" alt=""><b>AIDA UI</b></div><span class="page-kind">02 / BRAND SURFACE</span></header>
       <div class="content">
         <h2>一张背景，贯穿三个工作区域</h2>
-        <figure class="shot"><span class="proof">LIVE DSH / AIDA PERSONAL TERMINAL</span><a href="../assets/aida-slides-brand-surface.png" target="_blank" rel="noopener"><img src="../assets/aida-slides-brand-surface.png" alt="AIDA 个人操作终端统一覆盖 Sidebar 与会话区域的品牌背景"></a></figure>
+        <figure class="shot"><span class="proof">LIVE DSH / AIDA PERSONAL TERMINAL</span><a href="./demos/aida-pets-brand-surface.png" target="_blank" rel="noopener"><img src="./demos/aida-pets-brand-surface.png" alt="鲸鲸陪伴角色运行在 AIDA 个人操作终端的右下角，品牌背景统一覆盖 Sidebar 与会话区域"></a></figure>
         <div class="caption-row">
           <div class="caption-item"><small>IDENTITY</small><b>个人操作终端</b><span>AIDA 品牌、产品身份与军团署名形成统一识别。</span></div>
           <div class="caption-item"><small>CONTINUITY</small><b>连续表层</b><span>同一幅水彩背景贯穿 Sidebar、会话与 CANVAS。</span></div>
           <div class="caption-item"><small>GLASS</small><b>克制玻璃</b><span>交互表面保持可读，环境插画退到内容之后。</span></div>
         </div>
       </div>
-      <a class="citation" href="../assets/aida-slides-brand-surface.png" target="_blank" rel="noopener">aida-slides-brand-surface.png</a>
+      <a class="citation" href="./demos/aida-pets-brand-surface.png" target="_blank" rel="noopener">docs/slides/demos/aida-pets-brand-surface.png</a>
     </section>
 
     <section class="slide">
-      <header class="slide-head"><div class="brand-row"><img src="../../assets/brand-logo-light.svg" alt=""><b>AIDA UI</b></div><span class="page-kind">03 / REAL WORKSPACE</span></header>
+      <header class="slide-head"><div class="brand-row"><img src="../../assets/brand-logo-light.svg" alt=""><b>AIDA UI</b></div><span class="page-kind">03 / PET COMPANION</span></header>
+      <div class="content">
+        <h2>鲸鲸读懂 Session 状态，但不进入业务逻辑</h2>
+        <div class="visual-grid">
+          <figure class="shot"><span class="proof">LIVE DSH / HEALING WHALE HIT</span><a href="./demos/aida-pets-whale.png" target="_blank" rel="noopener"><img src="./demos/aida-pets-whale.png" alt="AIDA 右下角的鲸鲸陪伴角色与悬浮信息面板"></a></figure>
+          <aside class="rail">
+            <a class="rail-item active" href="../../cordis.patch.yml" target="_blank" rel="noopener"><b>官方 Runtime</b><span>@linxin666/dsh-pet 负责渲染、状态和设置入口。</span></a>
+            <a class="rail-item" href="../../assets/pets/healing-whale-hit/pet.json" target="_blank" rel="noopener"><b>状态投影</b><span>会话与工具阶段映射到精灵轨道，不改写 Session。</span></a>
+            <a class="rail-item" href="../../scripts/install-whale.mjs" target="_blank" rel="noopener"><b>单包分发</b><span>仅随 AIDA 安装 healing-whale-hit，来源与许可可追溯。</span></a>
+          </aside>
+        </div>
+      </div>
+      <a class="citation" href="../../assets/pets/healing-whale-hit/NOTICE.md" target="_blank" rel="noopener">healing-whale-hit / NOTICE.md</a>
+    </section>
+
+    <section class="slide">
+      <header class="slide-head"><div class="brand-row"><img src="../../assets/brand-logo-light.svg" alt=""><b>AIDA UI</b></div><span class="page-kind">04 / REAL WORKSPACE</span></header>
       <div class="content">
         <h2>CANVAS 与会话真正并列</h2>
         <div class="visual-grid">
-          <figure class="shot"><span class="proof">LIVE DSH / FILES</span><a href="../assets/aida-slides-overview.png" target="_blank" rel="noopener"><img src="../assets/aida-slides-overview.png" alt="当前 DSH 中的 AIDA CANVAS 文件页"></a></figure>
+          <figure class="shot"><span class="proof">LIVE DSH / FILES + PET</span><a href="./demos/aida-pets-overview.png" target="_blank" rel="noopener"><img src="./demos/aida-pets-overview.png" alt="鲸鲸陪伴角色与当前 DSH 中的 AIDA CANVAS 文件页"></a></figure>
           <aside class="rail">
             <div class="rail-item active"><b>不遮挡</b><span>对话区真实收窄，CANVAS 占据 details 轨道。</span></div>
             <div class="rail-item"><b>可调整</b><span>宽度可拖拽，并支持独立最大化和还原。</span></div>
@@ -311,15 +327,15 @@
           </aside>
         </div>
       </div>
-      <a class="citation" href="../assets/aida-slides-overview.png" target="_blank" rel="noopener">aida-slides-overview.png</a>
+      <a class="citation" href="./demos/aida-pets-overview.png" target="_blank" rel="noopener">docs/slides/demos/aida-pets-overview.png</a>
     </section>
 
     <section class="slide">
-      <header class="slide-head"><span class="section-id">04 / FILES</span><span class="page-kind">PROJECT CONTEXT</span></header>
+      <header class="slide-head"><span class="section-id">05 / FILES</span><span class="page-kind">PROJECT CONTEXT</span></header>
       <div class="content">
         <h2>文件不是附件，是可引用的上下文</h2>
         <div class="visual-grid">
-          <figure class="shot file-focus"><span class="proof">LIVE DSH / FILE TREE</span><a href="../assets/aida-slides-overview.png" target="_blank" rel="noopener"><img src="../assets/aida-slides-overview.png" alt="AIDA CANVAS 文件树与导入工具栏"></a></figure>
+          <figure class="shot file-focus"><span class="proof">LIVE DSH / FILE TREE + PET</span><a href="./demos/aida-pets-overview.png" target="_blank" rel="noopener"><img src="./demos/aida-pets-overview.png" alt="鲸鲸陪伴角色、AIDA CANVAS 文件树与导入工具栏"></a></figure>
           <aside class="rail">
             <div class="rail-item active"><b>完整操作</b><span>搜索、导入、拖拽、移动、重命名与删除。</span></div>
             <div class="rail-item"><b>@ 引用</b><span>把文件或选中片段送入当前会话输入。</span></div>
@@ -331,35 +347,35 @@
     </section>
 
     <section class="slide">
-      <header class="slide-head"><span class="section-id">05 / TRAJECTORY</span><span class="page-kind">NATIVE DSH VIEW</span></header>
+      <header class="slide-head"><span class="section-id">06 / TRAJECTORY</span><span class="page-kind">NATIVE DSH VIEW</span></header>
       <div class="content">
         <h2>轨迹不重写，只移动到正确入口</h2>
-        <figure class="shot"><span class="proof">LIVE DSH / TRAJECTORY</span><a href="../assets/aida-slides-trajectory.png" target="_blank" rel="noopener"><img src="../assets/aida-slides-trajectory.png" alt="AIDA CANVAS 中真实运行的 DSH Trajectory"></a></figure>
+        <figure class="shot"><span class="proof">LIVE DSH / TRAJECTORY + PET</span><a href="./demos/aida-pets-trajectory.png" target="_blank" rel="noopener"><img src="./demos/aida-pets-trajectory.png" alt="鲸鲸陪伴角色与 AIDA CANVAS 中真实运行的 DSH Trajectory"></a></figure>
         <div class="caption-row">
           <div class="caption-item"><small>01</small><b>原版复用</b><span>直接承载 ui-trajectory 的工具栏、时间线和记录表。</span></div>
           <div class="caption-item"><small>02</small><b>上下文连续</b><span>输入、输出与工具调用无需离开当前 Session。</span></div>
           <div class="caption-item"><small>03</small><b>日志归位</b><span>会话日志下载与轨迹操作保持同一水平。</span></div>
         </div>
       </div>
-      <a class="citation" href="../assets/aida-slides-trajectory.png" target="_blank" rel="noopener">aida-slides-trajectory.png</a>
+      <a class="citation" href="./demos/aida-pets-trajectory.png" target="_blank" rel="noopener">docs/slides/demos/aida-pets-trajectory.png</a>
     </section>
 
     <section class="slide">
-      <header class="slide-head"><span class="section-id">06 / CANVAS PREVIEW</span><span class="page-kind">READ, EDIT, QUOTE</span></header>
+      <header class="slide-head"><span class="section-id">07 / CANVAS PREVIEW</span><span class="page-kind">READ, EDIT, QUOTE</span></header>
       <div class="content">
         <h2>产物在原位打开，也在原位继续工作</h2>
-        <figure class="shot"><span class="proof">LIVE DSH / MARKDOWN PREVIEW</span><a href="../assets/aida-slides-canvas.png" target="_blank" rel="noopener"><img src="../assets/aida-slides-canvas.png" alt="AIDA CANVAS 中的 Markdown 预览"></a></figure>
+        <figure class="shot"><span class="proof">LIVE DSH / MARKDOWN PREVIEW + PET</span><a href="./demos/aida-pets-canvas.png" target="_blank" rel="noopener"><img src="./demos/aida-pets-canvas.png" alt="鲸鲸陪伴角色与 AIDA CANVAS 中的 Markdown 预览"></a></figure>
         <div class="caption-row">
           <div class="caption-item"><small>FORMAT</small><b>格式感知</b><span>Markdown、代码、HTML、Mermaid、JSON、表格与 Office。</span></div>
           <div class="caption-item"><small>MODE</small><b>预览与编辑</b><span>共享顶部工具栏，切换源码与渲染结果。</span></div>
           <div class="caption-item"><small>QUOTE</small><b>选区引用</b><span>把预览中的选中内容带来源送回输入框。</span></div>
         </div>
       </div>
-      <a class="citation" href="../assets/aida-slides-canvas.png" target="_blank" rel="noopener">aida-slides-canvas.png</a>
+      <a class="citation" href="./demos/aida-pets-canvas.png" target="_blank" rel="noopener">docs/slides/demos/aida-pets-canvas.png</a>
     </section>
 
     <section class="slide">
-      <header class="slide-head"><span class="section-id">07 / DESIGN LANGUAGE</span><span class="page-kind">ONE RHYTHM</span></header>
+      <header class="slide-head"><span class="section-id">08 / DESIGN LANGUAGE</span><span class="page-kind">ONE RHYTHM</span></header>
       <div class="content system-grid">
         <div class="system-copy"><h2>三个页面，一套克制的操作语言</h2><p>DSH 原生 primitive 与语义 token 优先。TASTE 负责层级和一致性，Amicro 只负责有意义的状态过渡。</p></div>
         <div class="spec-list">
@@ -373,24 +389,29 @@
     </section>
 
     <section class="slide install-slide">
-      <header class="slide-head"><span class="section-id">08 / INSTALL</span><span class="page-kind">CORDIS PLUGIN</span></header>
+      <header class="slide-head"><span class="section-id">09 / INSTALL</span><span class="page-kind">CORDIS PLUGIN + PET PACK</span></header>
       <div class="content">
-        <div class="install-hero"><h2><span class="install-hero-mark">1 个命令</span>，AIDA 进入 DSH</h2><p>开发时链接本地目录，交付时安装归档包。两条路径共享同一个 Cordis 插件条目。</p></div>
+        <div class="install-hero"><h2><span class="install-hero-mark">1 条安装链</span>，AIDA 与鲸鲸进入 DSH</h2><p>开发时链接本地目录并同步宠物包，交付时由 profile 命令安装。插件与素材保持独立、可移除。</p></div>
         <div class="install-grid">
           <article class="install primary"><div class="install-index"><span class="install-label">LOCAL CHECKOUT</span><strong>01</strong></div><h3>开发与集成</h3><p>在 DSH 仓库中加入本地插件目录，然后启动 Web profile。</p><pre><code>pnpm dsh plugin --profile web add \
   ./packages/client/ui-aida
 
 pnpm exec tsx apps/cli/src/bin.ts \
-  web --no-open</code></pre></article>
+  web --no-open
+
+node ./packages/client/ui-aida/scripts/install-whale.mjs</code></pre></article>
           <article class="install secondary"><div class="install-index"><span class="install-label">BUILT ARCHIVE</span><strong>02</strong></div><h3>归档与分发</h3><p>安装构建后的 tarball。移除插件不会删除现有会话与项目数据。</p><pre><code>dsh plugin --profile web add \
-  ./deepseek-ai-dsh-client-ui-aida.tgz
+  ./aida-aida-ui-dsh-0.1.0-rc.11.tgz
 
 dsh plugin --profile web remove \
-  @aida/aida-ui-dsh</code></pre></article>
+  @aida/aida-ui-dsh
+
+pnpm --dir &lt;DSH_HOME&gt;/profiles/web \
+  exec aida-install-whale</code></pre></article>
         </div>
         <div class="install-outcomes">
           <div><b>单一插件条目</b><span>设置页中以 ui-aida 独立管理</span></div>
-          <div><b>安装后即时生效</b><span>品牌、CANVAS 与内网模型入口一起装配</span></div>
+          <div><b>安装后即时生效</b><span>品牌、CANVAS、模型入口与鲸鲸一起装配</span></div>
           <div><b>移除保持数据</b><span>会话、项目文件与已存模型配置不被删除</span></div>
         </div>
       </div>
@@ -398,7 +419,7 @@ dsh plugin --profile web remove \
     </section>
 
     <section class="slide">
-      <header class="slide-head"><span class="section-id">09 / BOUNDARY</span><span class="page-kind">NO CORE FORK</span></header>
+      <header class="slide-head"><span class="section-id">10 / BOUNDARY</span><span class="page-kind">NO CORE FORK</span></header>
       <div class="content">
         <h2>AIDA 如何接入 DSH，而不让底座分叉？</h2>
         <div class="boundary-map" aria-label="DSH 与 AIDA 插件边界架构图">
@@ -424,7 +445,7 @@ dsh plugin --profile web remove \
               <a class="arch-node" href="../../src/index.ts" target="_blank" rel="noopener"><small>HOST ENTRY</small><b>Workspace HTTP API</b><span>路径校验、文件与 Office</span></a>
               <a class="arch-node" href="../../src/client/index.ts" target="_blank" rel="noopener"><small>CLIENT ENTRY</small><b>Brand · Canvas · Model</b><span>注册插槽与可逆 effect</span></a>
               <a class="arch-node" href="../../src/client/index.ts" target="_blank" rel="noopener"><small>ADAPTER</small><b>Resolve trajectory slot</b><span>消费已注册组件和 session face</span></a>
-              <a class="arch-node" href="../DESIGN.md" target="_blank" rel="noopener"><small>VISUAL ASSET</small><b>V2 Background · Glass</b><span>宿主静态图与全局 CSS 层</span></a>
+              <a class="arch-node" href="../../assets/pets/healing-whale-hit/pet.json" target="_blank" rel="noopener"><small>VISUAL ASSET</small><b>V2 Background · Whale Pack</b><span>宿主静态图与可移除宠物资源</span></a>
             </div>
           </article>
         </div>
@@ -441,13 +462,13 @@ dsh plugin --profile web remove \
     <section class="slide closing">
       <span class="section-id">THE TAKEAWAY</span>
       <h2>不是换一层皮，<br>而是让<span class="accent">交付过程可见</span></h2>
-      <p class="lead">AIDA UI 把最常用的交付上下文放回 Session，同时保持 DSH 核心可升级、插件可移除。</p>
+      <p class="lead">AIDA UI 把交付上下文与轻量陪伴放回 Session，同时保持 DSH 核心可升级、插件与宠物资源可移除。</p>
       <a class="action" href="../../README.zh.md" target="_blank" rel="noopener">查看完整插件说明</a>
       <a class="citation" href="../README.md" target="_blank" rel="noopener">docs/README.md</a>
     </section>
   </main>
 
-  <div class="counter" aria-live="polite"><span id="current">01</span> / <span id="total">10</span></div>
+  <div class="counter" aria-live="polite"><span id="current">01</span> / <span id="total">12</span></div>
   <div class="hint">方向键 / 空格 / 触摸滑动 / F 全屏</div>
   <div class="progress" id="progress"></div>
   <nav class="nav" aria-label="幻灯片导航"><button id="prev" type="button" aria-label="上一页">←</button><button id="next" type="button" aria-label="下一页">→</button></nav>

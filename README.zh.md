@@ -10,6 +10,19 @@ AIDA 是 dsh Web 客户端的纯浏览器端部署皮肤与画布。主界面保
 
 会话打开首次历史页时，插件会把会话包的纯文字加载 fallback 替换为居中的双轨圆形信号。内外圆轨使用当前 AIDA 品牌色反向旋转，同时保留本地化的“载入历史…”状态；启用 `prefers-reduced-motion: reduce` 时圆轨保持静止，移除插件则恢复会话包的 fallback。
 
+## AIDA 鲸鲸
+
+本分支只携带一套 DSH Pet：`healing-whale-hit`（鲸得起打）。AIDA bundle 启用官方 `@linxin666/dsh-pet` runtime，不分叉 renderer，也不复制它对会话和工具事件的状态投影。鲸鲸的图集、manifest、voice pack 与素材说明位于 `assets/pets/healing-whale-hit`；来源集合中的其他宠物不会进入本包。
+
+重启 Web 前，把鲸鲸安装到当前 DSH home：
+
+```powershell
+node .\scripts\install-whale.mjs
+dsh web
+```
+
+如果安装的是归档包，可在 Web profile 内执行其命令（`pnpm --dir <DSH_HOME>/profiles/web exec aida-install-whale`）。随后在 Settings → Pet 选择“鲸得起打”，也可通过 Pet API 切换。鲸鲸跟随 DSH runtime phase 变化，减少动态效果时服从 Pet runtime 的静态降级，并保持在 React 所有的画布布局之外。
+
 插件会把自己的品牌 token 层叠加到用户选择的亮色、深色或跟随系统主题之上，因此现有“外观”偏好仍然可用。移除 `ui-aida` 客户端条目会撤销 token、语言与 slot 注册，恢复中性的 PIUI 侧边栏图形。通用外壳仍持有全部交互行为：侧边栏折叠与展开、New Session、Workspace 选择及输入区行为都不会被替换。
 
 ## AIDA 画布
@@ -45,9 +58,12 @@ AIDA 是 dsh Web 客户端的纯浏览器端部署皮肤与画布。主界面保
 
 ## 插件库条目
 
-本包是 AIDA 视觉身份与画布在 DSH 插件库中的可复用单元。包清单同时声明浏览器插件与可安装的 `dsh.bundle` 层；安装该包会把以下 Cordis 条目作为一个可移除单元加入部署：
+本包是 AIDA 视觉身份与画布在 DSH 插件库中的可复用单元。包清单同时声明浏览器插件与可安装的 `dsh.bundle` 层；安装该包会把以下 Cordis 条目作为一个由本包持有的可移除层加入部署：
 
 ```yaml
+- id: pet
+  name: '@linxin666/dsh-pet'
+
 - id: ui-aida
   name: '@aida/aida-ui-dsh'
 ```
@@ -55,11 +71,12 @@ AIDA 是 dsh Web 客户端的纯浏览器端部署皮肤与画布。主界面保
 通过 DSH 插件命令安装构建后的 tarball 或本地 checkout；CLI 会把本包加入所选 profile 的 bundle 栈：
 
 ```sh
-dsh plugin --profile web add ./aida-aida-ui-dsh-0.1.0-rc.10.tgz
+dsh plugin --profile web add ./aida-aida-ui-dsh-0.1.0-rc.11.tgz
+pnpm --dir <DSH_HOME>/profiles/web exec aida-install-whale
 pnpm dsh plugin --profile web add ./packages/client/ui-aida
 ```
 
-激活后的部署会在 **设置 → 插件 → 插件列表** 中列出 `ui-aida`。`dsh plugin --profile web remove @aida/aida-ui-dsh` 会移除 bundle 条目与浏览器贡献，但不改变已存会话，也不删除通过“内网模型”页签安装的模型提供方设置。该归档需要匹配的 DSH Web 构建提供上文五个 Workspace 文件方法。
+激活后的部署会在 **设置 → 插件 → 插件列表** 中列出 `pet` 与 `ui-aida`。`dsh plugin --profile web remove @aida/aida-ui-dsh` 会移除 AIDA bundle 条目与浏览器贡献，但不改变已存会话，也不删除通过“内网模型”页签安装的模型提供方设置。该归档需要匹配的 DSH Web 构建提供上文六个 Workspace 文件方法。
 
 ## 模型体验
 

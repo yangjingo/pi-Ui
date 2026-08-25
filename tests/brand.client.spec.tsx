@@ -9,7 +9,7 @@ import {
   AidaHeroBrand, type AidaHeroBrandProps,
 } from '@aida/aida-ui-dsh/src/client/AidaHeroBrand.tsx'
 import { zh } from '@aida/aida-ui-dsh/src/client/locales.ts'
-import { AIDA_TOKENS } from '@aida/aida-ui-dsh/client'
+import { AIDA_TOKENS } from '../src/client/theme.ts'
 
 const t: AidaSidebarBrandProps['t'] = makeTranslate(zh)
 
