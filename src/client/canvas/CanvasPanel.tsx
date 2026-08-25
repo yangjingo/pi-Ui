@@ -13,7 +13,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
-import { TrajectoryView } from '@deepseek-ai/dsh-client-ui-trajectory/client'
 import type {
   InjectFace, PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -114,6 +113,7 @@ export function AidaCanvasPanel(props: AidaCanvasPanelProps) {
   const {
     useSession, useSessions, sessionId, useStore, actions, t,
     listFiles, readFile, writeFile, renameFile, moveFile, deleteFile, closeCanvas,
+    trajectoryView: TrajectoryView,
     useTrajectoryDuration, loadTrajectoryOlder, setTrajectoryActualDuration, trajectoryT, downloadSessionLog,
     mentionFile, quoteSelection,
   } = props
@@ -1103,7 +1103,7 @@ function CanvasTab({
             read={read}
             error={readError}
             editing={editing && !previewingDraft}
-            previewContent={editing && previewingDraft ? buffer : undefined}
+            {...(editing && previewingDraft ? { previewContent: buffer } : {})}
             buffer={buffer}
             saving={saving}
             onBufferChange={onBufferChange}

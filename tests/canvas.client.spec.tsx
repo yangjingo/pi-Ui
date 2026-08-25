@@ -27,16 +27,7 @@ import { AidaCanvasToggle } from '../src/client/canvas/CanvasToggle.tsx'
 import { selectAidaProducedFiles } from '../src/client/canvas/ProducedTail.tsx'
 import type { AidaCanvasPanelProps } from '../src/client/canvas/CanvasPanel.tsx'
 
-vi.mock('@deepseek-ai/dsh-client-ui-trajectory/client', async () => {
-  const { createElement } = await import('react')
-  const { createTrajectoryDurationStore } = await import(
-    '@deepseek-ai/dsh-client-ui-trajectory/src/client/duration-store.ts'
-  )
-  return {
-    createTrajectoryDurationStore,
-    TrajectoryView: () => createElement('div', { 'data-conversation-composer-overlay': '' }),
-  }
-})
+const TrajectoryView = () => <div data-conversation-composer-overlay="" />
 
 type ListFilesFn = (root: string, signal?: AbortSignal) => Promise<WorkspaceFileListing>
 type ReadFileFn = (root: string, path: string, opts?: { offset?: number; maxBytes?: number }, signal?: AbortSignal) => Promise<WorkspaceFileRead>
@@ -175,6 +166,7 @@ function mountPanel(options: {
       moveFile={moveFile}
       deleteFile={deleteFile}
       closeCanvas={closeCanvas}
+      trajectoryView={TrajectoryView}
       useTrajectoryDuration={useTrajectoryDuration}
       loadTrajectoryOlder={loadTrajectoryOlder}
       setTrajectoryActualDuration={setTrajectoryActualDuration}
@@ -509,6 +501,7 @@ describe('AIDA canvas panel', () => {
       moveFile: vi.fn() as never,
       deleteFile: vi.fn() as never,
       closeCanvas: vi.fn() as never,
+      trajectoryView: TrajectoryView,
       useTrajectoryDuration: bindSnapshotSelector(createSnapshotStore(false)) as never,
       loadTrajectoryOlder: vi.fn(async () => false) as never,
       setTrajectoryActualDuration: vi.fn() as never,

@@ -8,12 +8,7 @@ import type { ISessions, SessionId, SessionListState } from '@deepseek-ai/dsh-cl
 import { ThemeRuntime, type ThemeSettings } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { apply, inject } from '@aida/aida-ui-dsh/client'
 
-vi.mock('@deepseek-ai/dsh-client-ui-trajectory/client', async () => {
-  const { createTrajectoryDurationStore } = await import(
-    '@deepseek-ai/dsh-client-ui-trajectory/src/client/duration-store.ts'
-  )
-  return { createTrajectoryDurationStore, TrajectoryView: () => null }
-})
+const TrajectoryView = () => null
 
 async function bench() {
   const ctx = new Context()
@@ -103,6 +98,17 @@ async function bench() {
       'conversation.view': { kind: 'list', scope: 'session' },
     },
   } as never, () => null)
+  const trajectoryDuration = createSnapshotStore(false)
+  slots.register({
+    name: 'conversation.view',
+    id: 'trajectory',
+    order: 10,
+    inject: () => ({
+      hooks: { duration: trajectoryDuration },
+      loadOlder: vi.fn(async () => false),
+      setActualDuration: vi.fn(),
+    }),
+  } as never, TrajectoryView)
   // The built-in tool-details panel occupies the details seat at priority 0
   // (AIDA's canvas shadows it at -1).
   slots.register({ name: 'details' } as never, () => null)
@@ -172,6 +178,7 @@ describe('ui-aida apply', () => {
       closeCanvas: () => void
       loadTrajectoryOlder: () => Promise<boolean>
       setTrajectoryActualDuration: (value: boolean) => void
+      trajectoryView: typeof TrajectoryView
       trajectoryT: (key: string) => string
       downloadSessionLog: () => Promise<void>
       mentionFile: (path: string) => void
@@ -180,6 +187,7 @@ describe('ui-aida apply', () => {
     expect(injected.listFiles).toEqual(expect.any(Function))
     expect(injected.loadTrajectoryOlder).toEqual(expect.any(Function))
     expect(injected.setTrajectoryActualDuration).toEqual(expect.any(Function))
+    expect(injected.trajectoryView).toBe(TrajectoryView)
     expect(injected.trajectoryT).toEqual(expect.any(Function))
     await injected.downloadSessionLog()
     expect(b.sessionLogDownload.download).toHaveBeenCalledWith('s1')

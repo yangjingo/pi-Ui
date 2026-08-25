@@ -4,7 +4,7 @@
  * frame-wide overlay layer with a workspace file tree, preview, trajectory,
  * and upload. Removing the plugin restores every previous surface.
  */
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -13,7 +13,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
-import { createTrajectoryDurationStore } from '@deepseek-ai/dsh-client-ui-trajectory/client'
 import { AidaSidebarBrand, AidaSidebarMark } from './AidaBrand.tsx'
 import { AidaHeroBrand } from './AidaHeroBrand.tsx'
 import { AidaCanvasPanel } from './canvas/CanvasPanel.tsx'
@@ -50,6 +49,13 @@ declare module '@deepseek-ai/cordis' {
 export const inject = ['slots', 'locale', 'theme', 'workspaces', 'sessions', 'connection', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload']
 
 const PACKAGE_NAME = '@aida/aida-ui-dsh'
+
+/** Public injection face recorded by the trajectory conversation.view entry. */
+interface RegisteredTrajectoryFace {
+  hooks: { duration: SnapshotStore<boolean> }
+  loadOlder: () => Promise<boolean>
+  setActualDuration: (actualDuration: boolean) => void
+}
 
 /**
  * Activate the AIDA identity tokens, brand takeovers, and the Canvas drawer
@@ -106,20 +112,23 @@ export function apply(ctx: ClientContext): void {
   const openColumn = (): void => { ctx.layout.openDetails() }
   const closeColumn = (): void => { ctx.layout.closeDetails() }
 
-  const trajectoryDuration = createTrajectoryDurationStore()
   const canvasInjected = (sessionId: SessionId): AidaCanvasInjected => {
+    const trajectoryEntry = ctx.slots.entries('conversation.view')
+      .find(entry => entry.options.id === 'trajectory')
+    if (trajectoryEntry === undefined || trajectoryEntry.inject === undefined) {
+      throw new Error('ui-aida: trajectory conversation.view entry is unavailable')
+    }
+    const injectTrajectory = trajectoryEntry.inject as unknown as (
+      sessionId: SessionId,
+    ) => RegisteredTrajectoryFace
+    const trajectory = injectTrajectory(sessionId)
     return {
       ...aidaWorkspaceApi,
-      hooks: { trajectoryDuration },
-      loadTrajectoryOlder: async () => {
-        const session = ctx.sessions.binding(sessionId)?.session
-        if (session === undefined) throw new Error(`ui-aida: session "${sessionId}" is unavailable`)
-        const before = session.getSnapshot().views.get('trajectory')
-        await session.loadOlder()
-        return session.getSnapshot().views.get('trajectory') !== before
-      },
-      setTrajectoryActualDuration: value => { trajectoryDuration.set(value) },
-      trajectoryT: ctx.locale.bind('trajectory'),
+      trajectoryView: trajectoryEntry.component as AidaCanvasInjected['trajectoryView'],
+      hooks: { trajectoryDuration: trajectory.hooks.duration },
+      loadTrajectoryOlder: trajectory.loadOlder,
+      setTrajectoryActualDuration: trajectory.setActualDuration,
+      trajectoryT: ctx.locale.bind('trajectory') as AidaCanvasInjected['trajectoryT'],
       downloadSessionLog: () => ctx.sessionLogDownload.download(sessionId),
       closeCanvas: closeColumn,
       // The composer draft is per-session, so the 引用 actions route through the

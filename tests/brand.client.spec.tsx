@@ -11,13 +11,6 @@ import {
 import { zh } from '@aida/aida-ui-dsh/src/client/locales.ts'
 import { AIDA_TOKENS } from '@aida/aida-ui-dsh/client'
 
-vi.mock('@deepseek-ai/dsh-client-ui-trajectory/client', async () => {
-  const { createTrajectoryDurationStore } = await import(
-    '@deepseek-ai/dsh-client-ui-trajectory/src/client/duration-store.ts'
-  )
-  return { createTrajectoryDurationStore, TrajectoryView: () => null }
-})
-
 const t: AidaSidebarBrandProps['t'] = makeTranslate(zh)
 
 afterEach(cleanup)

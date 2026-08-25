@@ -34,9 +34,6 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "external": [
-        "@deepseek-ai/dsh-client-ui-trajectory/client"
-      ],
       "inject": [
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-runtime",
@@ -102,6 +99,7 @@
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
     "@deepseek-ai/cordis": "workspace:^",
     "react": "^18.2.0",
     "mermaid": "^11.16.0"
