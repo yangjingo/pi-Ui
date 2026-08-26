@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schemas.linxin666.org/dsh-pet/pet-manifest-v2.schema.json",
+  "petManifestVersion": 2,
+  "id": "healing-whale-hit",
+  "displayName": "鲸得起打",
+  "description": "被生活轻轻揍过，贴着创可贴、顶着小光环继续工作的鲸鲸。",
+  "version": "1.0.0",
+  "author": "yj",
+  "license": "Bundled with permission for AIDA distribution; no standalone redistribution",
+  "renderer": "sprite2d",
+  "sprite2d": {
+    "spritesheetPath": "spritesheet.webp",
+    "cell": { "width": 192, "height": 208 },
+    "columns": 8,
+    "atlasRows": 9,
+    "frames": [6, 8, 8, 4, 5, 8, 6, 6, 6],
+    "tracks": {
+      "idle": { "durations": [420, 420, 500, 420, 420, 500], "loop": true },
+      "running-right": { "durations": [92, 92, 92, 92, 92, 92, 92, 92], "loop": true },
+      "running-left": { "durations": [92, 92, 92, 92, 92, 92, 92, 92], "loop": true },
+      "waving": { "durations": [160, 140, 160, 180], "loop": true },
+      "jumping": { "durations": [135, 110, 115, 120, 160], "loop": false, "fallback": "idle" },
+      "failed": { "durations": [190, 190, 190, 190, 190, 190, 190, 190], "loop": false, "fallback": "idle" },
+      "waiting": { "durations": [480, 520, 560, 520, 480, 560], "loop": true },
+      "running": { "durations": [96, 96, 96, 96, 96, 96], "loop": true },
+      "review": { "durations": [330, 360, 390, 360, 330, 390], "loop": true }
+    }
+  },
+  "remarks": {
+    "pet": ["轻点拍，这边刚贴好。", "还能干活，问题不大。", "摸一下算工伤慰问。"],
+    "petCooldown": ["刚慰问过了，先让我缓缓。", "冷却中，创可贴也要休息。"],
+    "feed": ["小鱼干收到，血条回了一格。", "吃完继续扛。", "补给成功，今天还能再跑一轮。"],
+    "feedCooldown": ["刚吃过，先别把我喂成球。", "补给还在消化。"],
+    "noTreats": ["小鱼干库存见底了。", "今天连工伤餐都没了。"]
+  }
+}

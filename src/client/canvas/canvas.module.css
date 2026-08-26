@@ -25,14 +25,14 @@
   grid-template-columns: var(--aida-canvas-cols, 280px 0px 1400px) !important;
 }
 
-:global([data-aida-canvas-balanced]) {
+:global([data-aida-canvas-balanced]:not([data-details-collapsed])) {
   grid-template-columns: var(--aida-canvas-cols, 280px 640px 640px) !important;
 }
 
 /* DSH resolves a collapsed sidebar to its 56px compact rail. Override the
    stale expanded width captured by the balanced/maximized Canvas grid so the
    collapsed rail cannot leave an empty sidebar track behind. */
-:global([data-aida-canvas-balanced][data-sidebar-collapsed]) {
+:global([data-aida-canvas-balanced][data-sidebar-collapsed]:not([data-details-collapsed])) {
   grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr) !important;
 }
 

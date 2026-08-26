@@ -167,3 +167,20 @@ None; the plugin does not assemble provider input.
 - **Mentions degrade to literal `@path` text after a session remount** — like the built-in subagent references, a file mention's chip lives in the live composer state; a draft persisted across a session switch or reload keeps the clipboard text (`@path`) and submits that literal rather than re-embedding the file.
 - **The tool-details takeover is text-level** — the Canvas column shadows the built-in details panel and its trajectory step detail shows args, output text, and produced files, but the per-tool card renderers (terminal, code viewers) do not move into the column; clicking a tool row opens the column without auto-selecting that step in the trajectory.
 - **The center-column trajectory view is hidden** — the Canvas trajectory tab is the trajectory surface; a tool-row "inspect" action that activates the hidden center view leaves the center column blank (the Canvas trajectory tab is one click away).
+
+## Local Development Notes (2026-08-26)
+
+- **The background is served from the web deployment, not the plugin**: the
+  `aida-dsh-pets` merge replaced the atmosphere artwork
+  (`assets/aida-background.png`, SHA-256 `5C96D6…`) and dropped the
+  plugin-hosted `/aida-background.png` route; the deployed dsh web static root
+  carries the same image (`apps/web/dist/aida-background.png`).
+- **No dsh source patch is required**: the merged client bundles its own
+  relocated `TrajectoryView` and no longer imports
+  `@deepseek-ai/dsh-client-ui-trajectory` internals, so `deepseek-harness`
+  stays upstream-clean. `integration/ui-trajectory-public-exports.patch` is
+  kept as historical reference only.
+- **Whale pet (`鲸得起打`)**: `scripts/install-whale.mjs` installs the
+  `healing-whale-hit` pack into `$DSH_HOME/pets` and seeds it as the default
+  selection without overriding an explicitly chosen pet. Local tests run with
+  `pnpm test` (standalone `tsconfig.base*.json` + `vitest.config.ts`).

@@ -10,6 +10,9 @@
     "url": "git+https://github.com/yangjingo/pi-Ui.git#aida-dsh"
   },
   "type": "module",
+  "bin": {
+    "aida-install-whale": "./scripts/install-whale.mjs"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
@@ -54,10 +57,12 @@
   },
   "scripts": {
     "bundle": "tsdown",
-    "watch": "tsdown --watch"
+    "watch": "tsdown --watch",
+    "test": "vitest run"
   },
   "license": "MIT",
   "dependencies": {
+    "@linxin666/dsh-pet": "^0.3.2",
     "fflate": "^0.8.2",
     "lucide-react": "^1.32.0",
     "mermaid": "^11.16.0",
@@ -102,15 +107,26 @@
     "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-invariants": "^0.1.0-rc.8",
     "@deepseek-ai/dsh-workspace": "^0.1.0-rc.8",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "jsdom": "^29.1.1",
     "mermaid": "^11.16.0",
     "react": "^18.2.0",
     "tsdown": "^0.22.14",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "use-sync-external-store": "1.2.0",
+    "vitest": "^4.1.8"
   },
   "files": [
+    "CHANGELOG.md",
+    "LICENSE",
     "assets/*.svg",
     "assets/*.png",
+    "assets/pets/**/*.json",
+    "assets/pets/**/*.md",
+    "assets/pets/**/*.webp",
+    "scripts/install-whale.mjs",
     "lib/index.js",
     "lib/invariant.js",
     "lib/client.js",

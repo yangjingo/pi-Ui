@@ -11,8 +11,7 @@ import type {
   WorkspaceFileWrite,
 } from '../../workspace-protocol.ts'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-trajectory/client'
+import type { ComponentType } from 'react'
 
 /** One workspace panel tab. */
 export type AidaCanvasTab = 'files' | 'canvas' | 'trajectory'
@@ -74,6 +73,8 @@ export interface AidaCanvasFileOps {
 
 /** Injected face of the details-column registration: file verbs + column close. */
 export interface AidaCanvasInjected extends AidaCanvasFileOps {
+  /** Trajectory view contributed through DSH's public conversation.view slot. */
+  trajectoryView: ComponentType<Record<string, unknown>>
   /** DSH TrajectoryView's original duration store, exposed as useTrajectoryDuration. */
   hooks: { trajectoryDuration: SnapshotStore<boolean> }
   /** DSH TrajectoryView's original history paging callback. */
@@ -81,19 +82,13 @@ export interface AidaCanvasInjected extends AidaCanvasFileOps {
   /** DSH TrajectoryView's original duration-mode setter. */
   setTrajectoryActualDuration: (actualDuration: boolean) => void
   /** DSH TrajectoryView's own locale binding. */
-  trajectoryT: PropsLocale<'trajectory'>['t']
+  trajectoryT: (key: string) => string
   /** Start the framework-owned Session log download flow for this session. */
   downloadSessionLog: () => Promise<void>
   /**
    * Close the right-hand column (the frame's details track).
    */
   closeCanvas: () => void
-  /**
-   * Open the right-hand column (the frame's details track). The DSH rc.2
-   * frame keeps the details track session-scoped and closes it on session
-   * switches, so the panel re-opens it whenever it mounts for a session.
-   */
-  openCanvas: () => void
   /**
    * Insert a workspace-file mention chip (`@path`) at the end of the current
    * session's composer draft; the chip embeds the file content on submit.

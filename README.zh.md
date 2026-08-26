@@ -82,3 +82,16 @@ pnpm dsh plugin --profile web add ./packages/client/ui-aida
 - **会话重挂载后引用退化为字面 `@路径` 文本**：与内置子代理引用一致，文件引用的 chip 只存在于实时输入状态；跨会话切换或刷新后持久化的草稿只保留剪贴板文本（`@路径`），提交时发送该字面量而非重新内嵌文件。
 - **工具详情接管为文本级**：画布列遮蔽内置详情面板，其轨迹步骤详情展示参数、输出文本与产物文件，但按工具定制的卡片渲染（终端、代码查看器等）不会移入画布列；点击对话中的工具行会打开画布列，但不会自动选中轨迹中的对应步骤。
 - **中间栏轨迹视图被隐藏**：画布轨迹页签才是轨迹表面；工具行 “inspect” 动作若激活被隐藏的中间栏视图，中间栏会留白（画布轨迹页签一步可达）。
+
+## 本地开发说明（2026-08-26）
+
+- **背景由 web 部署提供，而非插件托管**：`aida-dsh-pets` 合并后替换了
+  atmosphere 背景图（`assets/aida-background.png`，SHA-256 `5C96D6…`）并移除了
+  插件侧的 `/aida-background.png` 路由；部署的 dsh web 静态根目录携带同一图片
+  （`apps/web/dist/aida-background.png`）。
+- **不再需要 dsh 源码补丁**：合并后的客户端自带重定位的 `TrajectoryView`，不再
+  引用 `@deepseek-ai/dsh-client-ui-trajectory` 内部实现，`deepseek-harness`
+  保持上游干净。`integration/ui-trajectory-public-exports.patch` 仅作为历史参考保留。
+- **鲸鱼宠物（鲸得起打）**：`scripts/install-whale.mjs` 将 `healing-whale-hit`
+  安装到 `$DSH_HOME/pets` 并设为默认选择（不覆盖用户显式选择的其它宠物）。
+  本地测试：`pnpm test`（独立 `tsconfig.base*.json` + `vitest.config.ts`）。

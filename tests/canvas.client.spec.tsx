@@ -27,16 +27,11 @@ import { AidaCanvasToggle } from '../src/client/canvas/CanvasToggle.tsx'
 import { selectAidaProducedFiles } from '../src/client/canvas/ProducedTail.tsx'
 import type { AidaCanvasPanelProps } from '../src/client/canvas/CanvasPanel.tsx'
 
-vi.mock('@deepseek-ai/dsh-client-ui-trajectory/client', async () => {
-  const { createElement } = await import('react')
-  const { createTrajectoryDurationStore } = await import(
-    '@deepseek-ai/dsh-client-ui-trajectory/src/client/duration-store.ts'
-  )
-  return {
-    createTrajectoryDurationStore,
-    TrajectoryView: () => createElement('div', { 'data-conversation-composer-overlay': '' }),
-  }
-})
+const TrajectoryView = () => (
+  <div data-conversation-composer-overlay="">
+    <div><div data-testid="trajectory-toolbar" /></div>
+  </div>
+)
 
 type ListFilesFn = (root: string, signal?: AbortSignal) => Promise<WorkspaceFileListing>
 type ReadFileFn = (root: string, path: string, opts?: { offset?: number; maxBytes?: number }, signal?: AbortSignal) => Promise<WorkspaceFileRead>
@@ -59,6 +54,10 @@ class ResizeObserverStub {
 
 beforeEach(() => {
   localStorage.clear()
+  delete document.body.dataset.aidaCanvasMaximized
+  delete document.body.dataset.aidaCanvasBalanced
+  document.body.style.removeProperty('--aida-canvas-cols')
+  document.body.style.removeProperty('grid-template-columns')
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:fake'), revokeObjectURL: vi.fn() })
 })
@@ -175,6 +174,7 @@ function mountPanel(options: {
       moveFile={moveFile}
       deleteFile={deleteFile}
       closeCanvas={closeCanvas}
+      trajectoryView={TrajectoryView}
       useTrajectoryDuration={useTrajectoryDuration}
       loadTrajectoryOlder={loadTrajectoryOlder}
       setTrajectoryActualDuration={setTrajectoryActualDuration}
@@ -257,7 +257,7 @@ describe('AIDA canvas helpers', () => {
     }))).toEqual([])
   })
 
-  it('applies and clears the frame maximized grid override', () => {
+  it('applies the maximized grid override and restores a balanced split', () => {
     const frame = document.createElement('div')
     frame.style.gridTemplateColumns = '280px 1fr 360px'
     Object.defineProperty(frame, 'children', { value: [{ getBoundingClientRect: () => ({ width: 280 }) }] })
@@ -272,7 +272,8 @@ describe('AIDA canvas helpers', () => {
 
     applyMaximizedGrid(panel, false)
     expect(frame.dataset.aidaCanvasMaximized).toBeUndefined()
-    expect(frame.style.getPropertyValue('--aida-canvas-cols')).toBe('')
+    expect(frame.dataset.aidaCanvasBalanced).toBe('true')
+    expect(frame.style.getPropertyValue('--aida-canvas-cols')).toBe('280px 700px 700px')
     frame.remove()
   })
 
@@ -509,6 +510,7 @@ describe('AIDA canvas panel', () => {
       moveFile: vi.fn() as never,
       deleteFile: vi.fn() as never,
       closeCanvas: vi.fn() as never,
+      trajectoryView: TrajectoryView,
       useTrajectoryDuration: bindSnapshotSelector(createSnapshotStore(false)) as never,
       loadTrajectoryOlder: vi.fn(async () => false) as never,
       setTrajectoryActualDuration: vi.fn() as never,
@@ -763,13 +765,13 @@ describe('AIDA canvas panel', () => {
     const binaryFile = new File([new Uint8Array([0, 104, 105])], 'bin.dat', { type: 'application/octet-stream' })
 
     fireEvent.dragEnter(panel, { dataTransfer: { types: ['Files'], files: [] } })
-    expect(screen.getAllByText('导入')).toHaveLength(2)
+    expect(screen.getByText('导入')).toBeTruthy()
     fireEvent.dragOver(panel, { dataTransfer: { types: ['Files'], files: [] } })
     fireEvent.dragLeave(panel, { dataTransfer: { types: ['Files'], files: [] } })
-    expect(screen.getAllByText('导入')).toHaveLength(1)
+    expect(screen.queryByText('导入')).toBeNull()
     // A drop without Files data is ignored.
     fireEvent.dragEnter(panel, { dataTransfer: { types: ['Text'], files: [] } })
-    expect(screen.getAllByText('导入')).toHaveLength(1)
+    expect(screen.queryByText('导入')).toBeNull()
     fireEvent.dragOver(panel, { dataTransfer: { types: ['Text'], files: [] } })
     fireEvent.dragLeave(panel, { dataTransfer: { types: ['Text'], files: [] } })
     fireEvent.drop(panel, { dataTransfer: { types: ['Text'], files: [] } })
@@ -1497,9 +1499,9 @@ describe('AIDA canvas panel', () => {
     fireEvent.dragEnter(panel, { dataTransfer: { types: ['Files'], files: [] } })
     fireEvent.dragLeave(panel, { dataTransfer: { types: ['Files'], files: [] } })
     // One nested drag remains, so the overlay stays.
-    expect(screen.getAllByText('导入')).toHaveLength(2)
+    expect(screen.getByText('导入')).toBeTruthy()
     fireEvent.dragLeave(panel, { dataTransfer: { types: ['Files'], files: [] } })
-    expect(screen.getAllByText('导入')).toHaveLength(1)
+    expect(screen.queryByText('导入')).toBeNull()
   })
 
   it('reports string failures from rename, move, and delete', async () => {

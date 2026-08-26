@@ -32,7 +32,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: url('/aida-background.png') center / cover no-repeat;
+  background: url('/aida-background.png?v=2') center / cover no-repeat;
   filter: contrast(1.06) saturate(0.92);
   opacity: 0.76;
 }
@@ -70,11 +70,12 @@
   background-color: transparent !important;
   background-image:
     linear-gradient(rgba(248, 250, 254, 0.22), rgba(248, 250, 254, 0.22)),
-    url('/aida-background.png') !important;
+    url('/aida-background.png?v=2') !important;
   background-position: left top, left top !important;
   background-repeat: no-repeat, no-repeat !important;
   background-size: 100vw 100vh, 100vw 100vh !important;
   border-right-color: rgba(108, 137, 184, 0.14) !important;
+  backdrop-filter: blur(18px) saturate(106%);
 }
 
 :global(#root > div > div > [class*='_sidebarCol'] > div),
