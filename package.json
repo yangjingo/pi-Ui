@@ -56,7 +56,7 @@
     }
   },
   "scripts": {
-    "bundle": "tsdown",
+    "bundle": "tsc -b tsconfig.client.json && tsdown",
     "watch": "tsdown --watch",
     "test": "vitest run"
   },
@@ -111,6 +111,7 @@
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
     "jsdom": "^29.1.1",
+    "lightningcss": "1.33.0",
     "mermaid": "^11.16.0",
     "react": "^18.2.0",
     "tsdown": "^0.22.14",

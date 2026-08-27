@@ -60,7 +60,9 @@ DSH 平台由 0.1.0-rc.8 升级至 0.1.1-rc.2 后，AIDA UI 插件客户端与�
 ## 4. 已知限制
 
 - details 列原生拖拽调整宽度的 handle 未显示（列宽由 CSS 覆盖决定），最大化 / 关闭按钮可用；
-- 插件仓库缺少共享构建配置 `tsdown.client.ts`，完整重新打包需补齐；当前部署使用已适配的 bundle。
+- 插件仓库自带 standalone 构建配置 `tsdown.client.ts`：`pnpm bundle` 会先执行
+  `tsc -b tsconfig.client.json`，再生成 Node 半边与 Web ModuleLoader
+  `lib/client.js`；Mermaid 动态运行时内联进单文件 bundle，避免发布包引用未打包 chunk。
 
 ## 5. 涉及提交
 

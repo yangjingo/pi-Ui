@@ -37,6 +37,32 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Whale artwork remains a separately governed bundled asset (see
   `assets/pets/healing-whale-hit/NOTICE.md`).
 
+### Fixed
+
+- Build: restore the standalone plugin bundle pipeline. The repository split
+  had left `tsdown.config.ts` pointing at a missing monorepo preset and kept
+  stale project references in `tsconfig.client.json`. The plugin now carries
+  its own ModuleLoader/CSS-Modules tsdown preset, declares `lightningcss`, and
+  runs TypeScript before bundling. The browser artifact also inlines the lazy
+  Mermaid runtime, fixing the old emitted-chunk reference that the plugin
+  package did not ship.
+- Chrome: hide the full host composer seat while the settings dialog is open.
+  The previous state guard hid only `composerStack`; the active-phase
+  `composerSeat` parent still painted its fade gradient, leaving an empty
+  footer band behind the modal. The state selector now targets the parent and
+  uses visibility rather than display so the underlying layout does not shift.
+- Chrome: re-fix the settings dialog being trapped inside the sidebar column.
+  A stale deployed bundle had re-introduced `backdrop-filter` on
+  `[class*='_sidebarCol']`, which creates a containing block and pins the
+  `position: fixed` overlay to the sidebar. The shipped bundle removes that
+  declaration again; the host's native mask restores full-viewport coverage on
+  its own once the containing block is gone.
+- Chrome: keep the native settings mask untouched. The temporary brand override
+  raised the mask above the host panel and increased its blur, which blurred
+  the dialog itself. Once the full composer seat is hidden, that override is
+  unnecessary; the host continues to provide its native dim layer and 2px
+  background blur with the panel above the mask.
+
 ## [0.1.0-rc.11] - 2026-08-25
 
 ### Added

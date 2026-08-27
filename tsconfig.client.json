@@ -5,20 +5,5 @@
     "outDir": "lib/types",
     "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo"
   },
-  "include": ["src/client", "src/css-modules.d.ts", "src/workspace-protocol.ts"],
-  "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../api/remotes/tsconfig.client.json" },
-    { "path": "../locale" },
-    { "path": "../runtime" },
-    { "path": "../ui-conversation" },
-    { "path": "../ui-input-trigger" },
-    { "path": "../ui-layout" },
-    { "path": "../ui-primitives" },
-    { "path": "../ui-sidebar" },
-    { "path": "../ui-slots" },
-    { "path": "../ui-theme" },
-    { "path": "../ui-trajectory" },
-    { "path": "../../runtime-diagnostics/invariants" }
-  ]
+  "include": ["src/client", "src/css-modules.d.ts", "src/workspace-protocol.ts"]
 }

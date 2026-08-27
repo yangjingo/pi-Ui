@@ -13,9 +13,13 @@ import {
   reconcileChrome,
   setHidden,
   startChromeSkin,
+  syncSettingsDialogState,
 } from '../src/client/skin/chrome.ts'
 
-afterEach(() => { cleanup() })
+afterEach(() => {
+  cleanup()
+  delete document.documentElement.dataset.aidaSettingsDialog
+})
 
 /** The session-header utilities seat with a session-log button + a canvas toggle. */
 function utilitiesSeat(root: HTMLElement, logLabel = 'Session log'): { seat: HTMLDivElement; log: HTMLButtonElement; toggle: HTMLButtonElement } {
@@ -165,6 +169,126 @@ describe('trajectory surface hiding', () => {
     expect(log.style.display).toBe('none')
     stop()
     root.remove()
+  })
+})
+
+describe('settings dialog state', () => {
+  /** Mirror the host shape: a dialog owned by the sidebar settings foot area. */
+  function sidebarSettingsDialog(root: HTMLElement): {
+    footArea: HTMLDivElement
+    overlay: HTMLDivElement
+    mask: HTMLDivElement
+    dialog: HTMLDivElement
+  } {
+    const footArea = document.createElement('div')
+    footArea.className = 'hidden_hash_footArea'
+    const overlay = document.createElement('div')
+    const mask = document.createElement('div')
+    mask.className = 'hidden_hash_mask'
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    dialog.setAttribute('aria-modal', 'true')
+    overlay.append(mask, dialog)
+    footArea.appendChild(overlay)
+    root.appendChild(footArea)
+    return { footArea, overlay, mask, dialog }
+  }
+
+  it('sets a global open-state attribute while the sidebar dialog is mounted', () => {
+    const root = document.createElement('div')
+    const { dialog } = sidebarSettingsDialog(root)
+    expect(syncSettingsDialogState(root)).toBe(true)
+    expect(document.documentElement.dataset.aidaSettingsDialog).toBe('open')
+    expect(document.documentElement.getAttribute('data-aida-settings-dialog')).toBe('open')
+    expect(syncSettingsDialogState(root)).toBe(false)
+  })
+
+  it('ignores dialogs outside the sidebar settings area and non-modal dialogs', () => {
+    const root = document.createElement('div')
+    const unrelated = document.createElement('div')
+    unrelated.setAttribute('role', 'dialog')
+    unrelated.setAttribute('aria-modal', 'true')
+    const nonModalFootDialog = document.createElement('div')
+    nonModalFootDialog.setAttribute('role', 'dialog')
+    const footArea = document.createElement('div')
+    footArea.className = 'hidden_hash_footArea'
+    footArea.appendChild(nonModalFootDialog)
+    root.append(unrelated, footArea)
+
+    expect(syncSettingsDialogState(root)).toBe(false)
+    expect(document.documentElement.hasAttribute('data-aida-settings-dialog')).toBe(false)
+  })
+
+  it('changes only the document state, never the native mask or dialog DOM', () => {
+    const root = document.createElement('div')
+    const { overlay, mask, dialog } = sidebarSettingsDialog(root)
+    const rootBefore = root.innerHTML
+    const maskBefore = mask.outerHTML
+    const dialogBefore = dialog.outerHTML
+
+    expect(syncSettingsDialogState(root)).toBe(true)
+    expect(root.innerHTML).toBe(rootBefore)
+    expect(mask.outerHTML).toBe(maskBefore)
+    expect(dialog.outerHTML).toBe(dialogBefore)
+    expect(mask.style.length).toBe(0)
+    expect(dialog.style.length).toBe(0)
+    expect(mask.getAttributeNames()).toEqual(['class'])
+    expect(dialog.getAttributeNames()).toEqual(['role', 'aria-modal'])
+  })
+
+  it('removes the global open-state attribute when the dialog unmounts', () => {
+    const root = document.createElement('div')
+    document.documentElement.dataset.aidaSettingsDialog = 'open'
+    expect(syncSettingsDialogState(root)).toBe(true)
+    expect(document.documentElement.hasAttribute('data-aida-settings-dialog')).toBe(false)
+    expect(syncSettingsDialogState(root)).toBe(false)
+  })
+
+  it('reconciles settings state through the combined chrome pass', async () => {
+    const root = document.createElement('div')
+    const { footArea, dialog } = sidebarSettingsDialog(root)
+    document.body.appendChild(root)
+    expect(reconcileChrome(root)).toBe(true)
+    expect(document.documentElement.dataset.aidaSettingsDialog).toBe('open')
+    dialog.remove()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(reconcileChrome(root)).toBe(true)
+    expect(document.documentElement.hasAttribute('data-aida-settings-dialog')).toBe(false)
+    root.remove()
+  })
+
+  it('observes mount and unmount without an explicit reconcile call', async () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const stop = startChromeSkin(document)
+    try {
+      const { dialog } = sidebarSettingsDialog(root)
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(document.documentElement.dataset.aidaSettingsDialog).toBe('open')
+
+      dialog.remove()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(document.documentElement.hasAttribute('data-aida-settings-dialog')).toBe(false)
+    } finally {
+      stop()
+      root.remove()
+    }
+  })
+
+  it('reopens the state after a close and reports each transition once', () => {
+    const root = document.createElement('div')
+    const { footArea, dialog } = sidebarSettingsDialog(root)
+    expect(reconcileChrome(root)).toBe(true)
+    expect(reconcileChrome(root)).toBe(false)
+
+    dialog.remove()
+    expect(reconcileChrome(root)).toBe(true)
+    expect(reconcileChrome(root)).toBe(false)
+
+    footArea.appendChild(dialog)
+    expect(reconcileChrome(root)).toBe(true)
+    expect(document.documentElement.dataset.aidaSettingsDialog).toBe('open')
+    expect(reconcileChrome(root)).toBe(false)
   })
 })
 
