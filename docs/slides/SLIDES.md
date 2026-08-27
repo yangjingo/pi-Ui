@@ -4,6 +4,16 @@
 
 [打开 HTML 演示稿](./slides.html)
 
+## Pets 演示截图
+
+演示稿中的鲸鲸、Files、Trajectory 与 Canvas 画面来自本地 DSH 实例的真实浏览器采集，保存在 [`./demos`](./demos/)；重新生成时运行：
+
+```powershell
+python .\docs\slides\demos\capture-pets.py
+```
+
+采集脚本会选择 `healing-whale-hit`，并在浏览器出现控制台错误或页面错误时失败。
+
 # 简要的概览
 
 ## 背景
@@ -12,6 +22,10 @@
 
 
 ## 架构拆解
+
+- DSH 官方底座与 AIDA 插件边界
+- 仅通过 Cordis Slots、注入服务和生命周期集成
+- Profile link → Load → Apply → Dispose 的可逆时序
 
 # Everything is Plugin ？ 如何理解
 

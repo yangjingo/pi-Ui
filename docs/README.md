@@ -5,8 +5,9 @@
 ## 章节
 
 1. [AIDA UI 设计语言](./design-language.md)
-2. [AIDA / DSH HTML Slides](./slides/slides.html)（[内容提纲](./slides/SLIDES.md)）
-3. [主题展示与集成验证](./theme-showcase.md)
+2. [AIDA UI 视觉实现：V2 背景与毛玻璃](./DESIGN.md)
+3. [AIDA / DSH HTML Slides](./slides/slides.html)（[内容提纲](./slides/SLIDES.md)）
+4. [主题展示与集成验证](./theme-showcase.md)
 
 ## 维护入口
 
