@@ -75,13 +75,19 @@
   background-repeat: no-repeat, no-repeat !important;
   background-size: 100vw 100vh, 100vw 100vh !important;
   border-right-color: rgba(108, 137, 184, 0.14) !important;
-  backdrop-filter: blur(18px) saturate(106%);
 }
 
 :global(#root > div > div > [class*='_sidebarCol'] > div),
 :global(#root > div > div > [class*='_sidebarCol'] > div > div) {
   background-color: transparent !important;
   background-image: none !important;
+}
+
+:global(html[data-aida-settings-dialog='open'] [class*='_composerSeat']) {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  user-select: none !important;
 }
 
 :global(body[data-ds-dark-theme] #root > div > div) {

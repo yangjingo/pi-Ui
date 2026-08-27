@@ -22,6 +22,7 @@
 const SESSION_LOG_LABELS = new Set(['会话日志', 'Session log'])
 const HERO_HEADLINE = '你的交付态势导航仓'
 const COMPOSER_PLACEHOLDER = '给AIDA智能交付助手下发任务'
+const SETTINGS_DIALOG_SELECTOR = "[class*='_footArea'] [role='dialog'][aria-modal='true']"
 
 /**
  * Apply the English/Chinese Workspace-to-Project vocabulary mapping.
@@ -140,6 +141,28 @@ export function applyProjectVocabularyOnce(root: ParentNode): boolean {
   return changed
 }
 
+/**
+ * Sync the settings dialog state onto the document element.
+ * @param root - DOM subtree containing the sidebar settings dialog.
+ * @returns true when the state attribute changed.
+ */
+export function syncSettingsDialogState(root: ParentNode): boolean {
+  const ownerDocument = root.nodeType === Node.DOCUMENT_NODE ? (root as Document) : (root as Element).ownerDocument
+  const documentElement = ownerDocument?.documentElement
+  if (!documentElement) return false
+
+  const isOpen = root.querySelector(SETTINGS_DIALOG_SELECTOR) !== null
+  if (isOpen && documentElement.dataset.aidaSettingsDialog !== 'open') {
+    documentElement.dataset.aidaSettingsDialog = 'open'
+    return true
+  }
+  if (!isOpen && 'aidaSettingsDialog' in documentElement.dataset) {
+    delete documentElement.dataset.aidaSettingsDialog
+    return true
+  }
+  return false
+}
+
 /** Replace the shipped Chinese hero headline while leaving its preview badge intact. */
 export function applyHeroHeadlineOnce(root: ParentNode): boolean {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
@@ -188,6 +211,7 @@ export function reconcileChrome(root: ParentNode): boolean {
     if (setHidden(view, true)) changed = true
   }
   if (applyProjectVocabularyOnce(root)) changed = true
+  if (syncSettingsDialogState(root)) changed = true
   if (applyHeroHeadlineOnce(root)) changed = true
   if (applyComposerPlaceholderOnce(root)) changed = true
   return changed
