@@ -13,6 +13,10 @@
 
 ## 架构拆解
 
+- DSH 官方底座与 AIDA 插件边界
+- 仅通过 Cordis Slots、注入服务和生命周期集成
+- Profile link → Load → Apply → Dispose 的可逆时序
+
 # Everything is Plugin ？ 如何理解
 
 ## OpenLAB MAAS插件
