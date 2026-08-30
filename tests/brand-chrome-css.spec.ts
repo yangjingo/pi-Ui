@@ -62,6 +62,13 @@ describe('AidaBrand chrome css guards', () => {
     expect(sidebarRule(sourceCss)).not.toMatch(/backdrop-filter/i)
   })
 
+  it('uses the plugin-owned static route for the atmosphere artwork', () => {
+    expect(sourceCss).toContain("url('/aida-ui-assets/aida-background-v2.png?v=4')")
+    expect(sourceCss).not.toMatch(/url\(['"]?\/aida-background\.png/)
+    expect(sourceCss).toMatch(/html\[lang='en'\].*_headlineText.*::after/s)
+    expect(sourceCss).toContain('DELIVERY INTELLIGENCE')
+  })
+
   it('shipped bundle sidebarCol rule has no backdrop-filter', () => {
     expect(sidebarRule(shippedBundle)).not.toMatch(/backdrop-filter/i)
   })

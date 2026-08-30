@@ -3,8 +3,10 @@
 // candidate/lexicon/pick behavior against stubbed workspaces + sessions, and
 // the composer injection helpers against a stubbed conversation shell.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ClientContext, SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceFileListing, WorkspaceFileNode } from '../src/workspace-protocol.ts'
 import {
   createFileMentionSource, FILE_MENTION_SOURCE, fileModelForm, fileReference,

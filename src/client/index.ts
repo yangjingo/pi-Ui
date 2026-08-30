@@ -4,15 +4,20 @@
  * frame-wide overlay layer with a workspace file tree, preview, trajectory,
  * and upload. Removing the plugin restores every previous surface.
  */
-import type { ClientContext, SessionId, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-api-remotes/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { AidaSidebarBrand, AidaSidebarMark } from './AidaBrand.tsx'
 import { AidaHeroBrand } from './AidaHeroBrand.tsx'
 import { AidaCanvasPanel } from './canvas/CanvasPanel.tsx'
@@ -46,7 +51,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** Services required by the AIDA browser skin, Canvas, and intranet models. */
-export const inject = ['slots', 'locale', 'theme', 'workspaces', 'sessions', 'connection', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload']
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'remote', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload']
 
 const PACKAGE_NAME = '@aida/aida-ui-dsh'
 
@@ -180,8 +185,7 @@ export function apply(ctx: ClientContext): void {
   // A dedicated settings section beside the shipped Models page; install
   // writes the same `llm-pi-ai` provider profile the Models page's custom
   // provider card does.
-  const connection = ctx.get('connection') as ConnectionHandle
-  const intranetModels = new IntranetModelsController(connection.api)
+  const intranetModels = new IntranetModelsController(ctx.remote)
   const t = ctx.locale.bind(NS)
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',

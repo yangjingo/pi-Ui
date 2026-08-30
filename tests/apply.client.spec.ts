@@ -3,8 +3,10 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { SlotRegistry, createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ISessions, SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
+import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import { ThemeRuntime, type ThemeSettings } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { apply, inject } from '../src/client/index.ts'
 
@@ -50,17 +52,11 @@ async function bench() {
   ctx.provide('conversation', conversation)
   const sessionLogDownload = { download: vi.fn(async () => {}) }
   ctx.provide('sessionLogDownload', sessionLogDownload)
-  ctx.provide('connection', {
-    isLoopback: true,
-    api: {
-      settings: {
-        describe: vi.fn(async () => ({ result: { ok: true, value: { writable: true, hasDocument: false, namespaces: [] } } })),
-        mutate: vi.fn(async () => ({ result: { ok: true, value: {} } })),
-      },
+  ctx.provide('remote', {
+    settings: {
+      describe: vi.fn(async () => ({ ok: true, value: { writable: true, hasDocument: false, namespaces: [] } })),
+      mutate: vi.fn(async () => ({ ok: true, value: {} })),
     },
-    rpc: {},
-    hostDescription: { getSnapshot: () => undefined, subscribe: () => () => {} },
-    start: () => ({ stop: () => {} }),
   } as never)
   const slots = ctx.get('slots') as SlotRegistry
   slots.register({
@@ -116,8 +112,8 @@ async function bench() {
 }
 
 describe('ui-aida apply', () => {
-  it('declares the presentation, workspace-file, sessions, connection, conversation, trigger, and layout services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale', 'theme', 'workspaces', 'sessions', 'connection', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload'])
+  it('declares the presentation, workspace-file, sessions, remote, conversation, trigger, and layout services it uses', () => {
+    expect(inject).toEqual(['slots', 'locale', 'theme', 'sessions', 'remote', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload'])
   })
 
   it('owns adaptive identity tokens and reversible brand + Canvas takeovers', async () => {

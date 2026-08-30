@@ -10,7 +10,7 @@ import type {
   WorkspaceFileRead,
   WorkspaceFileWrite,
 } from '../../workspace-protocol.ts'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ComponentType } from 'react'
 
 /** One workspace panel tab. */

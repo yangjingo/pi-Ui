@@ -6,11 +6,14 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { AIDA_WORKSPACE_ENDPOINT, type AidaWorkspaceRequest, type AidaWorkspaceResponse } from './workspace-protocol.ts'
 import { WorkspaceFileError, WorkspaceFiles } from './host/workspace-files.ts'
+import { AIDA_ASSETS_ROUTE, createAidaAssetsHandler } from './host/static-assets.ts'
+import { fileURLToPath } from 'node:url'
 
 export const name = 'client-ui-aida'
 export const inject = ['webServer', 'workspaceRegistry']
 
 const MAX_REQUEST_BYTES = 28 * 1024 * 1024
+const PACKAGE_VERSION = '0.1.2-alpha.5'
 
 async function readRequest(req: IncomingMessage): Promise<AidaWorkspaceRequest> {
   if (req.method !== 'POST') throw new WorkspaceFileError('workspace-write-invalid', 'only POST is supported')
@@ -36,6 +39,13 @@ function send<T>(res: ServerResponse, status: number, body: AidaWorkspaceRespons
 
 export function apply(ctx: Context): void {
   const files = new WorkspaceFiles(() => ctx.workspaceRegistry.list().map(workspace => workspace.path))
+  const assetRoot = fileURLToPath(new URL('../assets/', import.meta.url))
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'prefix',
+    path: AIDA_ASSETS_ROUTE,
+    handler: createAidaAssetsHandler(assetRoot),
+  }), 'ui-aida: static asset route')
+
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: AIDA_WORKSPACE_ENDPOINT,
@@ -65,4 +75,9 @@ export function apply(ctx: Context): void {
       }
     },
   }), 'ui-aida: Workspace HTTP route')
+
+  console.log(
+    `[aida-ui] 插件已加载 v${PACKAGE_VERSION}：`
+    + `AIDA 品牌主题/画布客户端 + ${AIDA_ASSETS_ROUTE} 静态资源 + ${AIDA_WORKSPACE_ENDPOINT} 文件 API`,
+  )
 }

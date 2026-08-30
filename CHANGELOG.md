@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.1.2-alpha.5 — 2026-08-30
+
+- Added `docs/dsh-plugin-embed.md` as the authoritative DSH-plugin embedding
+  contract for footer entry order, center takeover, icon backgrounds, motion,
+  and AIDA atmosphere ownership; linked it from the design language and docs
+  index.
+- Added the visible Host startup banner for the AIDA UI deployment, matching
+  the `aida-welink` loading convention and reporting the package version,
+  atmosphere asset route, and Workspace file API.
+
+## 0.1.2-alpha.4 — 2026-08-30
+
+- Added the plugin-owned `/aida-ui-assets/*` static route with a one-deep,
+  extension-allowlisted resolver, restoring the v2 AIDA atmosphere without
+  depending on artwork copied into the upstream DSH web static root.
+- Added the two requested pet packs (`burger-king-refined` / 堡你满意 and
+  `flamingo-refined` / 鹤法摸鱼) beside the existing `healing-whale-hit` /
+  鲸得起打. `aida-install-pets` installs all three runtime packs; the legacy
+  `aida-install-whale` command remains compatible.
+- For local DSH `0.1.2` integration, the profile now uses the companion fork
+  at `../aida-pets-plugin`: upstream pet `0.3.3` is patched from the retired
+  `dsh-client-runtime` module graph to `dsh-client-store`, then restored as
+  the default `healing-whale-hit` companion.
+- Replaced the English blank-session headline `Into the Unknown` with the
+  AIDA logo/title lockup plus `DELIVERY INTELLIGENCE`, while retaining the
+  existing localized Chinese headline behavior.
+- Bundled the Host half from live `src/index.ts` so newly added host routes can
+  no longer be silently omitted when stale generated type output is present.
+
+## 0.1.2-alpha.3 — 2026-08-29
+
+- Compatible with deepseek-harness `dsh-v0.1.2-alpha.1`.
+- Removed the optional third-party `@linxin666/dsh-pet` runtime from the bundle;
+   it still requires the retired `dsh-client-runtime` module.
+- Replaced the deployment-hosted background image dependency with a bundled CSS
+  atmosphere, eliminating `/aida-background.png` 404 noise on upstream DSH builds.
+- Replaced removed `dsh-client-runtime` imports with the new split client modules:
+  `dsh-client-store`, `dsh-client-ui-renderer`, `dsh-client-ui-chat`, and
+  `dsh-client-ui-conversation`.
+- Updated settings access from the removed connection API envelope to `ctx.remote`.
+- Updated Canvas tool-result extraction for the new Conversation records shape.
+- Preserved the AIDA Canvas, brand, workspace mention, trajectory relocation,
+  and intranet-models behaviors; all 238 client tests pass.
+
 All notable changes to `@aida/aida-ui-dsh` are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

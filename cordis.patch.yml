@@ -1,8 +1,6 @@
-# Install the DSH Pet runtime and complete AIDA browser identity as one bundle.
-# AIDA ships one custom pet pack only: healing-whale-hit.
+# Complete AIDA browser identity. DSH 0.1.2 removed dsh-client-runtime, which
+# the old third-party pet runtime still requires; AIDA therefore ships without
+# the optional pet plugin in this alpha compatibility build.
 - insert:
-    - id: pet
-      name: '@linxin666/dsh-pet'
-
     - id: ui-aida
       name: '@aida/aida-ui-dsh'

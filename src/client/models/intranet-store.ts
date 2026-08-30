@@ -7,9 +7,10 @@
  * rather than a silent overwrite.
  */
 
-import type { IApiClient, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientRemote, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { JsonValue } from '@deepseek-ai/dsh-session/types'
+import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { installedRoutes, LLM_PROVIDER_NS, providerProfileFor, type IntranetModelPreset } from './presets.ts'
 
 /** State rendered by the intranet-models section. */
@@ -51,15 +52,14 @@ export class IntranetModelsController {
   /**
    * @param api - settings wire face used for durable reads and writes.
    */
-  constructor(private readonly api: Pick<IApiClient, 'settings'>) {}
+  constructor(private readonly api: Pick<ClientRemote, 'settings'>) {}
 
   /** Load the namespace view and project the preset install states. */
   async load(): Promise<void> {
     const generation = ++this.generation
     this.store.update((state) => { state.status = 'loading'; state.error = null })
     try {
-      const response = await this.api.settings.describe({})
-      const result = response.result
+      const result = await this.api.settings.describe()
       if (!result.ok) throw new Error(result.error.message)
       const view = providerNamespaceView(result.value.namespaces)
       if (generation !== this.generation) return
@@ -88,12 +88,16 @@ export class IntranetModelsController {
     this.store.update((state) => { state.busy = preset.route; state.error = null })
     try {
       const revision = this.store.getSnapshot().revision
-      const response = await this.api.settings.mutate({
-        ns: LLM_PROVIDER_NS,
-        ops: [{ op: 'set', path: ['providers', preset.route], value: providerProfileFor(preset) }],
-        ...(revision !== undefined ? { expectedRevision: revision } : {}),
-      })
-      if (!response.result.ok) return response.result.error.message
+      const result = await this.api.settings.mutate(
+        LLM_PROVIDER_NS,
+        [{
+          op: 'set',
+          path: ['providers', preset.route],
+          value: providerProfileFor(preset) as unknown as JsonValue,
+        }],
+        revision,
+      )
+      if (!result.ok) return result.error.message
       await this.load()
       return undefined
     } catch (error) {

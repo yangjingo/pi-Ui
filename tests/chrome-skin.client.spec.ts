@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import {
   applyProjectVocabulary,
+  applyHeroHeadlineOnce,
   findSessionLogButtons,
   findViewTablist,
   isProjectRename,
@@ -75,6 +76,25 @@ describe('project vocabulary', () => {
     expect(applyProjectVocabulary(slot)).toBe(true)
     expect(slot.getAttribute('aria-label')).toBe('Projects')
     expect(span.textContent).toBe('Add project')
+  })
+})
+
+describe('AIDA hero identity', () => {
+  it.each([
+    ['探索未至之境', '你的交付态势导航仓'],
+    ['Into the Unknown', 'AIDA'],
+  ])('replaces %s without touching the preview badge', (before, after) => {
+    const root = document.createElement('div')
+    const headline = document.createElement('span')
+    headline.textContent = before
+    const badge = document.createElement('span')
+    badge.textContent = 'Preview'
+    root.append(headline, badge)
+
+    expect(applyHeroHeadlineOnce(root)).toBe(true)
+    expect(headline.textContent).toBe(after)
+    expect(badge.textContent).toBe('Preview')
+    expect(applyHeroHeadlineOnce(root)).toBe(false)
   })
 })
 

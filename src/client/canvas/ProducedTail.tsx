@@ -9,8 +9,8 @@
  */
 
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {} from '@deepseek-ai/dsh-client-runtime/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { NS } from '../locales.ts'
 import { basename } from './files.ts'
 import { createAidaCanvasStore } from './store.ts'
@@ -30,7 +30,7 @@ interface AidaDeliverablesTurnData {
   readonly produced: readonly { readonly path: string; readonly seq: number }[]
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
     /** Successful mutation paths accumulated in this Turn (ui-deliverables publishes it). */
     deliverables: AidaDeliverablesTurnData

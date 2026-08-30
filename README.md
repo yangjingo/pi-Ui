@@ -168,19 +168,25 @@ None; the plugin does not assemble provider input.
 - **The tool-details takeover is text-level** — the Canvas column shadows the built-in details panel and its trajectory step detail shows args, output text, and produced files, but the per-tool card renderers (terminal, code viewers) do not move into the column; clicking a tool row opens the column without auto-selecting that step in the trajectory.
 - **The center-column trajectory view is hidden** — the Canvas trajectory tab is the trajectory surface; a tool-row "inspect" action that activates the hidden center view leaves the center column blank (the Canvas trajectory tab is one click away).
 
-## Local Development Notes (2026-08-26)
+## Local Development Notes (2026-08-30)
 
-- **The background is served from the web deployment, not the plugin**: the
-  `aida-dsh-pets` merge replaced the atmosphere artwork
-  (`assets/aida-background.png`, SHA-256 `5C96D6…`) and dropped the
-  plugin-hosted `/aida-background.png` route; the deployed dsh web static root
-  carries the same image (`apps/web/dist/aida-background.png`).
+- **The background is served by the plugin**: `/aida-ui-assets/*` resolves only
+  one-deep `.png`/`.svg` files under `assets/` and returns 404 for traversal,
+  nested paths, and other extensions. The atmosphere uses
+  `/aida-ui-assets/aida-background-v2.png`, so no artwork has to be copied into
+  the upstream DSH web static root.
 - **No dsh source patch is required**: the merged client bundles its own
   relocated `TrajectoryView` and no longer imports
   `@deepseek-ai/dsh-client-ui-trajectory` internals, so `deepseek-harness`
   stays upstream-clean. `integration/ui-trajectory-public-exports.patch` is
   kept as historical reference only.
-- **Whale pet (`鲸得起打`)**: `scripts/install-whale.mjs` installs the
-  `healing-whale-hit` pack into `$DSH_HOME/pets` and seeds it as the default
-  selection without overriding an explicitly chosen pet. Local tests run with
-  `pnpm test` (standalone `tsconfig.base*.json` + `vitest.config.ts`).
+- **Three AIDA pets**: `scripts/install-pets.mjs` installs `healing-whale-hit`
+  (`鲸得起打`, the default selection), `burger-king-refined` (`堡你满意`),
+  and `flamingo-refined` (`鹤法摸鱼`) into `$DSH_HOME/pets` without copying
+  source frames or previews. An explicit user selection is preserved.
+  `scripts/install-whale.mjs` remains as a backward-compatible alias. Local
+  tests run with `pnpm test` (standalone `tsconfig.base*.json` +
+  `vitest.config.ts`).
+- **Pet runtime**: DSH `0.1.2` integration uses the local compatibility fork
+  `../aida-pets-plugin` (`AIDA-LOCAL.md`), which replaces upstream pet
+  `0.3.3`'s retired `dsh-client-runtime` request with `dsh-client-store`.

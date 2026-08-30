@@ -20,7 +20,10 @@
 
 /** Labels used only by the exported session-log DOM locator. */
 const SESSION_LOG_LABELS = new Set(['会话日志', 'Session log'])
-const HERO_HEADLINE = '你的交付态势导航仓'
+const HERO_HEADLINES = new Map([
+  ['探索未至之境', '你的交付态势导航仓'],
+  ['Into the Unknown', 'AIDA'],
+])
 const COMPOSER_PLACEHOLDER = '给AIDA智能交付助手下发任务'
 const SETTINGS_DIALOG_SELECTOR = "[class*='_footArea'] [role='dialog'][aria-modal='true']"
 
@@ -163,13 +166,14 @@ export function syncSettingsDialogState(root: ParentNode): boolean {
   return false
 }
 
-/** Replace the shipped Chinese hero headline while leaving its preview badge intact. */
+/** Replace the shipped hero headline while leaving its preview badge intact. */
 export function applyHeroHeadlineOnce(root: ParentNode): boolean {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   let node = walker.nextNode()
   while (node !== null) {
-    if (node.nodeValue?.trim() === '探索未至之境') {
-      node.nodeValue = HERO_HEADLINE
+    const replacement = HERO_HEADLINES.get(node.nodeValue?.trim() ?? '')
+    if (replacement !== undefined) {
+      node.nodeValue = replacement
       return true
     }
     node = walker.nextNode()

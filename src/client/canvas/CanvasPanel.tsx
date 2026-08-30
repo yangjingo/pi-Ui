@@ -12,7 +12,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   InjectFace, PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -50,20 +49,44 @@ const PREVIEW_MAX_BYTES = 512 * 1024
 /** Imported names kept as UTF-8 text; everything else uploads as base64 binary. */
 const TEXT_EXTENSION_PATTERN = /\.(md|markdown|txt|log|csv|tsv|json|html?|xml|ya?ml|toml|ini|cfg|conf|py|js|m?js|cjs|ts|mts|cts|jsx|tsx|sh|bash|css|scss|less|java|kt|go|rs|rb|php|sql|swift|dart|vue|svelte)$/i
 
-/** Extract the follow-along file paths of a settled tool call (mutation cards only). */
-export function producedPathsOf(node: ToolResultNode): readonly string[] {
+/** Tool-result facts consumed by produced-file extraction (0.1.1 and 0.1.2 shapes). */
+interface ToolResultLike {
+  readonly call?: { name: string, argsRaw: string } | null
+  readonly callView?: {
+    card: string
+    locations?: ReadonlyArray<{ path: string }>
+  } | null
+  readonly resultView?: {
+    card: string
+    path?: string
+    diffs?: ReadonlyArray<{ path: string }>
+  } | null
+}
+
+/** Extract the follow-along file paths of a settled mutation call. */
+export function producedPathsOf(node: ToolResultLike): readonly string[] {
   const paths: string[] = []
   const add = (candidate?: string): void => {
     if (candidate !== undefined && !paths.includes(candidate)) paths.push(candidate)
   }
-  const callView = node.callView
+  const call = node.call
+  if (call !== null && call !== undefined) {
+    try {
+      const args = JSON.parse(call.argsRaw) as Record<string, unknown>
+      const direct = typeof args.file_path === 'string' ? args.file_path
+        : typeof args.path === 'string' ? args.path : undefined
+      if (direct !== undefined && (call.name === 'write' || call.name === 'edit')) add(direct)
+    } catch { /* malformed model arguments contribute no deliverable */ }
+  }
+
+  const callView = node.callView ?? null
   if (callView !== null && (callView.card === 'generic' || callView.card === 'diff')) {
     for (const location of callView.locations ?? []) add(location.path)
   }
-  const resultView = node.resultView
+  const resultView = node.resultView ?? null
   if (resultView !== null) {
     if (resultView.card === 'diff') {
-      for (const diff of resultView.diffs) add(diff.path)
+      for (const diff of resultView.diffs ?? []) add(diff.path)
     } else if (resultView.card === 'read') {
       add(resultView.path)
     }

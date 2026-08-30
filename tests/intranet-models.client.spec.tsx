@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import type { IApiClient, RpcError } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ClientRemote, RpcError } from '@deepseek-ai/dsh-api-remotes/client'
 import { zh } from '../src/client/locales.ts'
 import {
   installedRoutes, INTRANET_MODEL_PRESETS, isRouteInstalled, LLM_PROVIDER_NS, providerProfileFor,
@@ -20,15 +20,15 @@ const t: IntranetModelsSectionProps['t'] = makeTranslate(zh, commonZh)
 
 afterEach(() => { cleanup() })
 
-function ok(value: unknown): { result: { ok: true; value: unknown } } {
-  return { result: { ok: true, value } }
+function ok(value: unknown): { ok: true, value: unknown } {
+  return { ok: true, value }
 }
 
-function err(): { result: { ok: false; error: RpcError } } {
-  return { result: { ok: false, error: { code: 'settings-rejected', message: 'no', details: { ns: LLM_PROVIDER_NS } } } }
+function err(): { ok: false, error: RpcError } {
+  return { ok: false, error: { code: 'settings-rejected', message: 'no', details: { ns: LLM_PROVIDER_NS } } }
 }
 
-function fakeApi(overrides: Partial<Pick<IApiClient, 'settings'>> = {}) {
+function fakeApi(overrides: Partial<Pick<ClientRemote, 'settings'>> = {}) {
   // A mutable providers record the fake mutate updates and describe reflects.
   const providers: Record<string, { api: string }> = { 'intranet-ollama': { api: 'openai-completions' } }
   let revision = 7
@@ -36,8 +36,12 @@ function fakeApi(overrides: Partial<Pick<IApiClient, 'settings'>> = {}) {
     writable: true, hasDocument: false,
     namespaces: [{ ns: LLM_PROVIDER_NS, schema: {}, value: { providers }, applies: 'live', secrets: [], revision }],
   }))
-  const mutate = vi.fn(async (payload: { ops: { op: string; path: string[]; value: unknown }[] }) => {
-    for (const op of payload.ops) {
+  const mutate = vi.fn(async (
+    _ns: string,
+    ops: { op: string, path: string[], value: unknown }[],
+    _expectedRevision?: number,
+  ) => {
+    for (const op of ops) {
       if (op.op === 'set' && op.path[0] === 'providers' && op.path[1] !== undefined) {
         providers[op.path[1]] = op.value as { api: string }
         revision += 1
@@ -45,7 +49,7 @@ function fakeApi(overrides: Partial<Pick<IApiClient, 'settings'>> = {}) {
     }
     return ok({})
   })
-  const api = { settings: { describe, mutate, ...overrides } } as unknown as Pick<IApiClient, 'settings'>
+  const api = { settings: { describe, mutate, ...overrides } } as unknown as Pick<ClientRemote, 'settings'>
   return { api, describe, mutate }
 }
 
@@ -99,11 +103,11 @@ describe('intranet models controller', () => {
     const preset = INTRANET_MODEL_PRESETS[1]!
     const failure = await controller.install(preset)
     expect(failure).toBeUndefined()
-    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
-      ns: LLM_PROVIDER_NS,
-      ops: [{ op: 'set', path: ['providers', 'intranet-vllm'], value: expect.objectContaining({ api: 'openai-completions' }) }],
-      expectedRevision: 7,
-    }))
+    expect(mutate).toHaveBeenCalledWith(
+      LLM_PROVIDER_NS,
+      [{ op: 'set', path: ['providers', 'intranet-vllm'], value: expect.objectContaining({ api: 'openai-completions' }) }],
+      7,
+    )
     expect(api.settings.describe).toHaveBeenCalledTimes(2)
   })
 

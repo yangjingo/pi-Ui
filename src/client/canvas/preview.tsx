@@ -15,6 +15,11 @@ import { codeLangOf, isTsvName, type CanvasFileFormat } from './formats.ts'
 import { MermaidDiagram } from './MermaidDiagram.tsx'
 import css from './canvas.module.css'
 
+const MARKDOWN_LABELS = {
+  code: { copyLabel: '复制代码', copiedLabel: '已复制' },
+  footnotes: '脚注',
+} as const
+
 /** Locale seat shape the preview consumes (the panel's own `t`). */
 export type CanvasTranslate = (key: AidaKey, params?: Record<string, string>) => string
 
@@ -80,7 +85,7 @@ export function FilePreview({ node, read, error, editing, previewContent, buffer
     if (!editing && format === 'markdown') {
       return (
         <div className={css.markdownDoc} data-testid="aida-canvas-markdown">
-          <MarkdownText text={content} />
+          <MarkdownText text={content} labels={MARKDOWN_LABELS} />
         </div>
       )
     }
@@ -266,7 +271,7 @@ function OfficePreview({ read }: { read: WorkspaceFileRead }) {
 }
 
 /** Localized copy for the shared JSON tree (all keys come from the aida dictionary). */
-function jsonLabels(t: CanvasTranslate): Partial<JsonTreeLabels> {
+function jsonLabels(t: CanvasTranslate): JsonTreeLabels {
   return {
     copyValue: t('canvas.jsonCopyValue'),
     copyJson: t('canvas.jsonCopyJson'),

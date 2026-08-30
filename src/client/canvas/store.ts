@@ -8,7 +8,7 @@
  * frame's details-track state (`ctx.layout`), not this store's.
  */
 
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { AidaCanvasActions, AidaCanvasState } from './contract.ts'
 
 /** Empty canvas state (the panel resets to it on session switch). */

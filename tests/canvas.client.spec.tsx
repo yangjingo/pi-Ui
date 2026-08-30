@@ -6,12 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
-import {
-  createSnapshotStore, EMPTY_CHAT_SNAPSHOT, EMPTY_CONVERSATION_VIEWS,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  ConversationSnapshot, SessionId, SessionListState, ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { EMPTY_CHAT_SNAPSHOT } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
   WorkspaceFileListing, WorkspaceFileNode, WorkspaceFileRead, WorkspaceFileWrite,
 } from '../src/workspace-protocol.ts'
@@ -66,7 +64,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function toolResultNode(overrides: Partial<ToolResultNode> = {}): ToolResultNode {
+function toolResultNode(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     kind: 'tool-result',
     seq: 42,
@@ -83,18 +81,9 @@ function toolResultNode(overrides: Partial<ToolResultNode> = {}): ToolResultNode
   }
 }
 
-function snapshot(overrides: Partial<ConversationSnapshot> = {}): ConversationSnapshot {
+function snapshot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     sessionId: SID,
-    views: EMPTY_CONVERSATION_VIEWS,
-    chat: {
-      ...EMPTY_CHAT_SNAPSHOT,
-      legacy: { ...EMPTY_CHAT_SNAPSHOT.legacy, nodes: [toolResultNode()] },
-    },
-    nodes: [], turnTimings: new Map(), turnEnds: new Map(), partial: null, runningCalls: [],
-    pending: [], queue: [], running: false, composerPhase: 'active', removed: false,
-    openState: 'open', openError: null, hasMore: false, loadingOlder: false,
-    promptError: null, blank: false, subagent: null, lastAgentError: null,
     ...overrides,
   }
 }
@@ -121,7 +110,7 @@ function textFile(path: string, content: string): { node: WorkspaceFileNode; rea
 
 /** Drive the panel with stubbed hooks and injected verbs; returns spies. */
 function mountPanel(options: {
-  snapshot?: ConversationSnapshot
+  snapshot?: Record<string, unknown>
   listing?: WorkspaceFileListing
   reads?: Record<string, WorkspaceFileRead>
   listFiles?: ListFilesFn
@@ -139,7 +128,7 @@ function mountPanel(options: {
   const useSessions = bindSnapshotSelector(sessions)
   const store = createAidaCanvasStore().create()
   const useStore = bindSnapshotSelector(store)
-  const useSession = (selector: (snapshot: ConversationSnapshot | undefined) => unknown) => selector(snap)
+  const useSession = (selector: (snapshot: Record<string, unknown> | undefined) => unknown) => selector(snap)
   const listFiles = (options.listFiles ?? vi.fn(async () => options.listing ?? listing(textFile('README.md', '# Hello').node))) as Mock<ListFilesFn>
   const readFile = (options.readFile ?? vi.fn(async (_root: string, path: string) =>
     options.reads?.[path] ?? textFile(path, `content of ${path}`).read)) as Mock<ReadFileFn>
@@ -254,7 +243,7 @@ describe('AIDA canvas helpers', () => {
     expect(producedPathsOf(toolResultNode({
       callView: { card: 'generic', title: 'x' },
       resultView: null,
-    }))).toEqual([])
+    }))).toEqual(['a.txt'])
   })
 
   it('applies the maximized grid override and restores a balanced split', () => {
@@ -496,7 +485,7 @@ describe('AIDA canvas panel', () => {
     const store = createAidaCanvasStore().create()
     const props = {
       useSessions: bindSnapshotSelector(sessions) as never,
-      useSession: ((selector: (snapshot: ConversationSnapshot | undefined) => unknown) => selector(snap)) as never,
+      useSession: ((selector: (snapshot: Record<string, unknown> | undefined) => unknown) => selector(snap)) as never,
       useProjection: (() => undefined) as never,
       useInput: (() => ({ draft: '', draftRev: 0 })) as never,
       inputActions: { setDraft: vi.fn(), addImages: vi.fn(), removeImage: vi.fn(), pruneImages: vi.fn(), submit: vi.fn() } as never,

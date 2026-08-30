@@ -80,6 +80,10 @@ CANVAS 是会话右侧的 details 轨道，默认宽度与会话区域协调，�
 - `性能`：优先 `opacity` 与 `transform`，避免动画化宽高、布局轨道和大面积阴影。
 - `无障碍`：所有非必要动效响应 `prefers-reduced-motion: reduce`。
 
+业务插件的底部入口与 center 接管另有更具体的嵌入契约，见
+[DSH 插件嵌入 AIDA UI 契约](./dsh-plugin-embed.md)。该契约优先约束
+`系统设计` 与 `液冷通液` 的入口位置、激活态、icon 背景和动效边界。
+
 ## 7. 国际化
 
 - 可见文字、搜索占位、tooltip、空状态、错误、下载说明和无障碍标签必须进入插件 locale 表。

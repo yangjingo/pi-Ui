@@ -1,0 +1,149 @@
+{
+  "$schema": "https://schemas.linxin666.org/dsh-pet/pet-manifest-v2.schema.json",
+  "petManifestVersion": 2,
+  "id": "burger-king-refined",
+  "displayName": "堡你满意",
+  "description": "双层汉堡拟人桌宠，橙白运动鞋和大号白手套。",
+  "version": "1.0.0",
+  "author": "yj",
+  "license": "User-provided / AI-assisted asset; third-party trademark notice applies",
+  "renderer": "sprite2d",
+  "sprite2d": {
+  "spritesheetPath": "spritesheet.webp",
+  "cell": {
+    "width": 192,
+    "height": 208
+  },
+  "columns": 8,
+  "atlasRows": 9,
+  "frames": [
+    6,
+    8,
+    8,
+    4,
+    5,
+    8,
+    6,
+    6,
+    6
+  ],
+  "tracks": {
+    "idle": {
+      "durations": [
+        340,
+        360,
+        380,
+        360,
+        340,
+        380
+      ],
+      "loop": true
+    },
+    "running-right": {
+      "durations": [
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90
+      ],
+      "loop": true
+    },
+    "running-left": {
+      "durations": [
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90,
+        90
+      ],
+      "loop": true
+    },
+    "waving": {
+      "durations": [
+        150,
+        130,
+        150,
+        170
+      ],
+      "loop": true
+    },
+    "jumping": {
+      "durations": [
+        120,
+        105,
+        105,
+        120,
+        150
+      ],
+      "loop": false,
+      "fallback": "idle"
+    },
+    "failed": {
+      "durations": [
+        180,
+        180,
+        180,
+        180,
+        180,
+        180,
+        180,
+        180
+      ],
+      "loop": false,
+      "fallback": "idle"
+    },
+    "waiting": {
+      "durations": [
+        320,
+        340,
+        360,
+        340,
+        320,
+        360
+      ],
+      "loop": true
+    },
+    "running": {
+      "durations": [
+        95,
+        95,
+        95,
+        95,
+        95,
+        95
+      ],
+      "loop": true
+    },
+    "review": {
+      "durations": [
+        280,
+        300,
+        320,
+        300,
+        280,
+        320
+      ],
+      "loop": true
+    }
+  }
+  },
+  "remarks": {
+    "pet": [
+      "挥挥小手，今日特餐到。",
+      "摸一下，满意自动加倍。",
+      "别捏太久，我要散架了。"
+    ],
+    "feed": [
+      "芝士到账，快乐加层。",
+      "这口很配我，堡持住了。"
+    ],
+    "noTreats": "芝士片售罄，先吃空气堡。"
+  }
+}

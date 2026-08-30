@@ -8,13 +8,25 @@
  * pipeline does.
  */
 
-import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   ClientSessionContext, InputTriggerSource, ReferenceInsert, TokenSpan,
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { WorkspaceFileNode } from '../../workspace-protocol.ts'
 import { aidaWorkspaceApi } from '../workspace-api.ts'
+
+/** Session-list facts consumed by the workspace '@' source. */
+interface SessionsLike {
+  readonly list: {
+    getSnapshot(): {
+      current: SessionId | undefined
+      byId: Readonly<Record<string, { cwd?: string | undefined }>>
+    }
+  }
+  scope(sessionId: SessionId): ClientContext | undefined
+}
 
 /** Source name of the workspace-file '@' mention (renders as the menu group label). */
 export const FILE_MENTION_SOURCE = '文件'
@@ -116,12 +128,14 @@ export const lastMentionBySession = new Map<SessionId, { ref: string; rev: numbe
 function currentComposer(ctx: ClientContext): { shell: ComposerShell; root: string; sessionId: SessionId } | undefined {
   const conversation = ctx.get('conversation') as IConversation | undefined
   if (conversation === undefined) return undefined
-  const state = ctx.sessions.list.getSnapshot()
+  const sessions = (ctx as ClientContext & { sessions?: SessionsLike }).sessions
+  if (sessions === undefined) return undefined
+  const state = sessions.list.getSnapshot()
   const sessionId = state.current
   if (sessionId === undefined) return undefined
   const root = state.byId[sessionId]?.cwd
   if (root === undefined) return undefined
-  const actx = ctx.sessions.scope(sessionId)
+  const actx = sessions.scope(sessionId)
   if (actx === undefined) return undefined
   return { shell: conversation.input.for(actx), root, sessionId }
 }
@@ -184,7 +198,8 @@ export function createFileMentionSource(
   ctx: ClientContext,
   workspace: Pick<typeof aidaWorkspaceApi, 'listFiles' | 'readFile'> = aidaWorkspaceApi,
 ): InputTriggerSource {
-  const sessions: ISessions = ctx.sessions
+  const sessions = (ctx as ClientContext & { sessions?: SessionsLike }).sessions
+  if (sessions === undefined) throw new Error('ui-aida: sessions service is unavailable')
   const cache = new Map<SessionId, readonly string[]>()
   const listeners = new Map<SessionId, Set<() => void>>()
   const refreshing = new Map<SessionId, Promise<void>>()

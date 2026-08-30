@@ -4,3 +4,4 @@ lib/
 .settings-inspect/
 .DS_Store
 .playwright-cli/
+outputs/
