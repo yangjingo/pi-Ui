@@ -203,15 +203,14 @@ describe('ui-aida apply', () => {
     injected.quoteSelection('README.md', 'hello')
     expect(b.conversation.input.for).toHaveBeenCalled()
 
-    // The header toggle and the turn-tail chips open the same rightbar tab.
+    // The header toggle opens the same rightbar tab; the tail chips keep the
+    // Host's native open linkage, so they carry no injected open face.
     const toggle = b.slots.entries('conversation.session.header.utilities')[0]!
     const toggleInjected = toggle.inject?.() as { openCanvas: () => void }
     toggleInjected.openCanvas()
     expect(b.sidebarRight.openTab).toHaveBeenCalledTimes(2)
     const tail = b.slots.entries('conversation.chat.turnTail')[0]!
-    const tailInjected = tail.inject?.() as { openCanvas: () => void }
-    tailInjected.openCanvas()
-    expect(b.sidebarRight.openTab).toHaveBeenCalledTimes(3)
+    expect(tail.inject).toBeUndefined()
 
     // The intranet settings section binds its controller and label.
     const section = b.slots.entries('settings.section')[0]!

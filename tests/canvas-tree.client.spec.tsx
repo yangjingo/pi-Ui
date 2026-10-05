@@ -288,27 +288,26 @@ describe('AIDA canvas tree rows', () => {
 })
 
 describe('AIDA turn-tail chips', () => {
-  /** Mount the chips with a fresh store and open spy. */
+  /** Mount the chips with an open spy and the Host's native openFile. */
   function mountTail(paths: readonly string[]) {
-    const store = createAidaCanvasStore().create()
     const openCanvas = vi.fn()
+    const openFile = vi.fn()
     // dsh 0.2.0's turnTail is a list slot: the component runs the selection
-    // itself from the Turn's deliverables data.
+    // itself from the Turn's deliverables data and keeps the Host's native
+    // open linkage (openFile), not the Canvas.
     const props = {
       turn: { turn: 1, data: new Map([['deliverables', { produced: paths.map((path, index) => ({ path, seq: index + 1 })) }]]) },
       seq: paths.length + 1,
-      openFile: vi.fn(),
-      actions: store.actions,
-      openCanvas,
+      openFile,
       t,
     } as unknown as ProducedTailProps
     render(<ProducedTail {...props} />)
-    return { store, openCanvas }
+    return { openCanvas, openFile }
   }
 
-  it('renders produced-file chips, counts the overflow, and opens the canvas column on click', () => {
+  it('renders produced-file chips, counts the overflow, and opens natively on click', () => {
     const paths = ['a.txt', 'docs/guide.md', 'c.txt', 'd.txt', 'e.txt', 'f.txt', 'g.txt', 'h.txt']
-    const { store, openCanvas } = mountTail(paths)
+    const { openFile } = mountTail(paths)
     const tail = screen.getByTestId('aida-canvas-tail')
     expect(tail.textContent).toContain('生成的文件')
     expect(screen.getAllByRole('button')).toHaveLength(6)
@@ -318,17 +317,15 @@ describe('AIDA turn-tail chips', () => {
     expect(chip.textContent).toBe('guide.md')
     expect(chip.getAttribute('aria-label')).toBe('在画布中打开 docs/guide.md')
     fireEvent.click(chip)
-    expect(openCanvas).toHaveBeenCalledTimes(1)
-    expect(store.store.getSnapshot()).toMatchObject({ tab: 'canvas', activePath: 'docs/guide.md', openTabs: ['docs/guide.md'] })
+    expect(openFile).toHaveBeenCalledWith('docs/guide.md')
   })
 
   it('renders all chips without an overflow count when they fit', () => {
-    const { store, openCanvas } = mountTail(['a.txt', 'docs/guide.md'])
+    const { openFile } = mountTail(['a.txt', 'docs/guide.md'])
     expect(screen.getAllByRole('button')).toHaveLength(2)
     expect(screen.getByTestId('aida-canvas-tail').textContent).not.toContain('+')
     fireEvent.click(screen.getByTitle('a.txt'))
-    expect(openCanvas).toHaveBeenCalledTimes(1)
-    expect(store.store.getSnapshot()).toMatchObject({ activePath: 'a.txt' })
+    expect(openFile).toHaveBeenCalledWith('a.txt')
   })
 
   it('filters produced paths beyond the closing seq and declines empty deliverables', () => {

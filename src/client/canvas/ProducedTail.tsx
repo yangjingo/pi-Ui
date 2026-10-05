@@ -5,26 +5,20 @@
  * the ui-deliverables definition publishes (key 'deliverables' on the Turn
  * data map — the documented location-data channel) and renders nothing when
  * the turn produced nothing, letting the shipped row show instead. The chips
- * open the file in the AIDA Canvas rightbar tab instead of the Host's OS
- * opener.
+ * keep the Host's native open linkage (`openFile` → the right Sidebar's
+ * own preview tabs); the AIDA Canvas stays a separate tab opened from the
+ * session header, so the two previews never fight over the same click.
  */
 
-import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { NS } from '../locales.ts'
 import { basename } from './files.ts'
-import { createAidaCanvasStore } from './store.ts'
 import css from './canvas.module.css'
 
 /** At most six chips in the tail row; the rest stay counted. */
 const SHOWN_LIMIT = 6
-
-/** Injected open affordance of the turn-tail chips. */
-export interface ProducedTailInjected {
-  /** Open the Canvas rightbar tab. */
-  openCanvas: () => void
-}
 
 /** Produced-path facts the ui-deliverables definition publishes per turn. */
 interface AidaDeliverablesTurnData {
@@ -42,8 +36,6 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 export type ProducedTailProps =
   & PropsRuntime<'conversation.chat.turnTail'>
   & TurnTailOwnerProps
-  & PropsStore<ReturnType<typeof createAidaCanvasStore>>
-  & InjectFace<ProducedTailInjected>
   & PropsLocale<typeof NS>
 
 /**
@@ -63,9 +55,9 @@ export function selectAidaProducedFiles(owner: TurnTailOwnerProps): readonly str
   return paths.length === 0 ? null : paths
 }
 
-/** Render the produced-files chips of one turn, opening into the Canvas tab. */
-export function ProducedTail({ turn, seq, actions, openCanvas, t }: ProducedTailProps) {
-  const paths = selectAidaProducedFiles({ turn, seq, openFile: () => {} })
+/** Render the produced-files chips of one turn with the Host's native open linkage. */
+export function ProducedTail({ turn, seq, openFile, t }: ProducedTailProps) {
+  const paths = selectAidaProducedFiles({ turn, seq, openFile })
   if (paths === null) return null
   const shown = paths.slice(0, SHOWN_LIMIT)
   const hidden = paths.length - shown.length
@@ -80,7 +72,7 @@ export function ProducedTail({ turn, seq, actions, openCanvas, t }: ProducedTail
             className={css.tailChip}
             title={path}
             aria-label={t('canvas.producedOpen', { name: path })}
-            onClick={() => { actions.openFile(path); openCanvas() }}
+            onClick={() => { openFile(path) }}
           >
             {basename(path)}
           </button>

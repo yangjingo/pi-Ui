@@ -23,7 +23,7 @@ import { AidaSidebarBrand, AidaSidebarMark } from './AidaBrand.tsx'
 import { AidaHeroBrand } from './AidaHeroBrand.tsx'
 import { AidaCanvasPanel } from './canvas/CanvasPanel.tsx'
 import { AidaCanvasToggle, type CanvasToggleInjected } from './canvas/CanvasToggle.tsx'
-import { ProducedTail, type ProducedTailInjected } from './canvas/ProducedTail.tsx'
+import { ProducedTail } from './canvas/ProducedTail.tsx'
 import { createAidaCanvasStore } from './canvas/store.ts'
 import type { AidaCanvasInjected } from './canvas/contract.ts'
 import { createFileMentionSource, mentionFileIntoComposer, quoteSelectionIntoComposer } from './canvas/mention.ts'
@@ -187,8 +187,6 @@ export function apply(ctx: ClientContext): void {
     id: 'aida-canvas-tail',
     order: 100,
     locale: NS,
-    store: canvasStore,
-    inject: (): ProducedTailInjected => ({ openCanvas }),
   }, ProducedTail))
 
   // ── Intranet models: one-click install of intranet model presets ────────
