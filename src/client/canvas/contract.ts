@@ -86,10 +86,6 @@ export interface AidaCanvasInjected extends AidaCanvasFileOps {
   /** Start the framework-owned Session log download flow for this session. */
   downloadSessionLog: () => Promise<void>
   /**
-   * Close the right-hand column (the frame's details track).
-   */
-  closeCanvas: () => void
-  /**
    * Insert a workspace-file mention chip (`@path`) at the end of the current
    * session's composer draft; the chip embeds the file content on submit.
    * @param path - POSIX-relative path within the session's workspace root.

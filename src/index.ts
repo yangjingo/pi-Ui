@@ -13,7 +13,7 @@ export const name = 'client-ui-aida'
 export const inject = ['webServer', 'workspaceRegistry']
 
 const MAX_REQUEST_BYTES = 28 * 1024 * 1024
-const PACKAGE_VERSION = '0.1.2-alpha.5'
+const PACKAGE_VERSION = '0.2.0-rc.2'
 
 async function readRequest(req: IncomingMessage): Promise<AidaWorkspaceRequest> {
   if (req.method !== 'POST') throw new WorkspaceFileError('workspace-write-invalid', 'only POST is supported')

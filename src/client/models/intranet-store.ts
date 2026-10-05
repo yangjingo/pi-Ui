@@ -7,11 +7,31 @@
  * rather than a silent overwrite.
  */
 
-import type { ClientRemote, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { JsonValue } from '@deepseek-ai/dsh-session/types'
+import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { installedRoutes, LLM_PROVIDER_NS, providerProfileFor, type IntranetModelPreset } from './presets.ts'
+
+/**
+ * The settings wire face this controller uses. dsh 0.2.0's ClientRemote
+ * installs namespaces dynamically, so the face is declared structurally here
+ * (`ctx.remote.settings` at runtime satisfies it) instead of picked from the
+ * static remote type.
+ */
+export interface SettingsWireApi {
+  settings: {
+    describe(): Promise<
+      | { ok: true; value: { writable: boolean; namespaces: readonly SettingsNamespaceView[] } }
+      | { ok: false; error: { message: string } }
+    >
+    mutate(
+      namespace: string,
+      ops: readonly { op: 'set'; path: readonly string[]; value: JsonValue }[],
+      expectedRevision?: number,
+    ): Promise<{ ok: true } | { ok: false; error: { message: string } }>
+  }
+}
 
 /** State rendered by the intranet-models section. */
 export interface IntranetModelsState {
@@ -52,7 +72,7 @@ export class IntranetModelsController {
   /**
    * @param api - settings wire face used for durable reads and writes.
    */
-  constructor(private readonly api: Pick<ClientRemote, 'settings'>) {}
+  constructor(private readonly api: SettingsWireApi) {}
 
   /** Load the namespace view and project the preset install states. */
   async load(): Promise<void> {

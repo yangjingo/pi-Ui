@@ -16,19 +16,20 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { AidaSidebarBrand, AidaSidebarMark } from './AidaBrand.tsx'
 import { AidaHeroBrand } from './AidaHeroBrand.tsx'
 import { AidaCanvasPanel } from './canvas/CanvasPanel.tsx'
 import { AidaCanvasToggle, type CanvasToggleInjected } from './canvas/CanvasToggle.tsx'
-import { ProducedTail, selectAidaProducedFiles, type ProducedTailInjected } from './canvas/ProducedTail.tsx'
+import { ProducedTail, type ProducedTailInjected } from './canvas/ProducedTail.tsx'
 import { createAidaCanvasStore } from './canvas/store.ts'
 import type { AidaCanvasInjected } from './canvas/contract.ts'
 import { createFileMentionSource, mentionFileIntoComposer, quoteSelectionIntoComposer } from './canvas/mention.ts'
 import { startChromeSkin } from './skin/chrome.ts'
 import { IntranetModelsSection, type IntranetModelsInjected } from './models/IntranetModelsSection.tsx'
-import { IntranetModelsController } from './models/intranet-store.ts'
+import { IntranetModelsController, type SettingsWireApi } from './models/intranet-store.ts'
 import { en, NS, zh, type AidaKey } from './locales.ts'
 import { AIDA_TOKENS } from './theme.ts'
 import { aidaWorkspaceApi } from './workspace-api.ts'
@@ -51,7 +52,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** Services required by the AIDA browser skin, Canvas, and intranet models. */
-export const inject = ['slots', 'locale', 'theme', 'sessions', 'remote', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload']
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiSession', 'remote', 'conversation', 'inputTriggers', 'sidebarRight', 'sidebarRightTabs', 'sessionLogDownload']
 
 const PACKAGE_NAME = '@aida/aida-ui-dsh'
 
@@ -105,17 +106,15 @@ export function apply(ctx: ClientContext): void {
   }, AidaHeroBrand))
   // ── Canvas: right-hand column, header toggle, and turn-tail chips ────────
   // One shared per-session store handle mounts under the three session-scoped
-  // registrations (details column, header utilities, turn tail), so opening a
-  // produced file from the chat tail lands in the column. Column open/close is
-  // the frame's details-track state: the toggle and tail open it through
-  // `ctx.layout.openDetails`, and the panel's close affordance calls
-  // `ctx.layout.closeDetails`. The panel shadows the built-in tool-details
-  // panel (`details` seat, lower priority) and renders the shared tool-output
-  // seat (`conversation.details.tool`) through the original TrajectoryView, so
-  // tool inspection survives the takeover.
+  // registrations (rightbar tab body, header utilities, turn tail), so opening a
+  // produced file from the chat tail lands in the column. The column is the
+  // right Sidebar's docking kit: the Canvas registers a page tab type
+  // (`aida-canvas`) whose body is the panel in the keyed `sidebar.right.pane.tab`
+  // seat, opens through `ctx.sidebarRight.openTab`, and closes through the tab's
+  // own actions (the panel reads them from its `useTabInfo` hook).
   const canvasStore = createAidaCanvasStore()
-  const openColumn = (): void => { ctx.layout.openDetails() }
-  const closeColumn = (): void => { ctx.layout.closeDetails() }
+  const t = ctx.locale.bind(NS)
+  const openCanvas = (): void => { ctx.sidebarRight.openTab('aida-canvas') }
 
   const canvasInjected = (sessionId: SessionId): AidaCanvasInjected => {
     const trajectoryEntry = ctx.slots.entries('conversation.view')
@@ -135,7 +134,8 @@ export function apply(ctx: ClientContext): void {
       setTrajectoryActualDuration: trajectory.setActualDuration,
       trajectoryT: ctx.locale.bind('trajectory') as AidaCanvasInjected['trajectoryT'],
       downloadSessionLog: () => ctx.sessionLogDownload.download(sessionId),
-      closeCanvas: closeColumn,
+      // The panel closes its own tab through the tab actions carried by its
+      // useTabInfo hook; no injected close face is needed.
       // The composer draft is per-session, so the 引用 actions route through the
       // conversation service's session shell.
       mentionFile: path => mentionFileIntoComposer(ctx, path),
@@ -143,20 +143,29 @@ export function apply(ctx: ClientContext): void {
     }
   }
 
-  ctx.slots.inject('details', () => ctx.slots.register({
-    name: 'details',
-    priority: -1,
+  // Stage one: the tab type. No `patterns`, so nothing claims it by address —
+  // it is opened explicitly by kind (header toggle, tail chips).
+  ctx.effect(() => ctx.sidebarRightTabs.register({
+    id: PACKAGE_NAME,
+    kind: 'aida-canvas',
+    title: () => t('canvas.title'),
+  }), 'ui-aida: canvas tab type')
+
+  // Stage two: the body under the type's id in the keyed pane seat.
+  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+    name: 'sidebar.right.pane.tab',
+    key: PACKAGE_NAME,
     locale: NS,
     store: canvasStore,
     inject: canvasInjected,
   }, AidaCanvasPanel))
 
   // Canvas is AIDA's primary workspace surface. Plugin loading can finish
-  // before DSH wires the root layout actions, so retry briefly until the
-  // details column is ready instead of failing the whole plugin entry.
+  // before DSH wires the right Sidebar services, so retry briefly until the
+  // tab type is registered instead of failing the whole plugin entry.
   const openCanvasWhenReady = (attempt = 0): void => {
     try {
-      openColumn()
+      openCanvas()
     } catch {
       if (attempt < 20) {
         globalThis.setTimeout(() => openCanvasWhenReady(attempt + 1), 50)
@@ -170,23 +179,23 @@ export function apply(ctx: ClientContext): void {
     id: 'aida-canvas',
     order: 100,
     locale: NS,
-    inject: (): CanvasToggleInjected => ({ openCanvas: openColumn }),
+    inject: (): CanvasToggleInjected => ({ openCanvas }),
   }, AidaCanvasToggle))
 
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
     name: 'conversation.chat.turnTail',
-    select: selectAidaProducedFiles,
+    id: 'aida-canvas-tail',
+    order: 100,
     locale: NS,
     store: canvasStore,
-    inject: (): ProducedTailInjected => ({ openCanvas: openColumn }),
+    inject: (): ProducedTailInjected => ({ openCanvas }),
   }, ProducedTail))
 
   // ── Intranet models: one-click install of intranet model presets ────────
   // A dedicated settings section beside the shipped Models page; install
   // writes the same `llm-pi-ai` provider profile the Models page's custom
   // provider card does.
-  const intranetModels = new IntranetModelsController(ctx.remote)
-  const t = ctx.locale.bind(NS)
+  const intranetModels = new IntranetModelsController(ctx.remote as typeof ctx.remote & SettingsWireApi)
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'aida-intranet-models',

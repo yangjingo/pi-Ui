@@ -51,7 +51,10 @@ class ResizeObserverStub {
 }
 
 beforeEach(() => {
-  localStorage.clear()
+  // Node ≥25's localStorage needs --localstorage-file and reports clear as
+  // missing under vitest's jsdom; the panel owns no persisted state, so a
+  // best-effort clear is enough.
+  globalThis.localStorage?.clear?.()
   delete document.body.dataset.aidaCanvasMaximized
   delete document.body.dataset.aidaCanvasBalanced
   document.body.style.removeProperty('--aida-canvas-cols')

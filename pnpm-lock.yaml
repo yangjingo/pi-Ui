@@ -25,74 +25,80 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@deepseek-ai/cordis':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/vendor/cordis
-        version: link:../../deepseek-harness/vendor/cordis
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/vendor/cordis
+        version: link:../dsh-0.2.0-rc.2-src/vendor/cordis
       '@deepseek-ai/dsh-api-remotes':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/api/remotes
-        version: link:../../deepseek-harness/packages/api/remotes
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/api/remotes
+        version: link:../dsh-0.2.0-rc.2-src/packages/api/remotes
       '@deepseek-ai/dsh-api-session-controller':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/api/session-controller
-        version: link:../../deepseek-harness/packages/api/session-controller
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/api/session-controller
+        version: link:../dsh-0.2.0-rc.2-src/packages/api/session-controller
       '@deepseek-ai/dsh-client-connection':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/connection
-        version: link:../../deepseek-harness/packages/client/connection
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/connection
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/connection
       '@deepseek-ai/dsh-client-locale':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/locale
-        version: link:../../deepseek-harness/packages/client/locale
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/locale
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/locale
       '@deepseek-ai/dsh-client-store':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/store
-        version: link:../../deepseek-harness/packages/client/store
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/store
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/store
       '@deepseek-ai/dsh-client-test-runtime':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/test-support/client-runtime
-        version: link:../../deepseek-harness/packages/test-support/client-runtime
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/test-support/client-runtime
+        version: link:../dsh-0.2.0-rc.2-src/packages/test-support/client-runtime
       '@deepseek-ai/dsh-client-ui-chat':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-chat
-        version: link:../../deepseek-harness/packages/client/ui-chat
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-chat
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-chat
       '@deepseek-ai/dsh-client-ui-conversation':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-conversation
-        version: link:../../deepseek-harness/packages/client/ui-conversation
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-conversation
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-conversation
       '@deepseek-ai/dsh-client-ui-input-trigger':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-input-trigger
-        version: link:../../deepseek-harness/packages/client/ui-input-trigger
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-input-trigger
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-input-trigger
       '@deepseek-ai/dsh-client-ui-layout':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-layout
-        version: link:../../deepseek-harness/packages/client/ui-layout
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-layout
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-layout
       '@deepseek-ai/dsh-client-ui-primitives':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-primitives
-        version: link:../../deepseek-harness/packages/client/ui-primitives
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-primitives
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-primitives
       '@deepseek-ai/dsh-client-ui-renderer':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-renderer
-        version: link:../../deepseek-harness/packages/client/ui-renderer
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-renderer
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-renderer
       '@deepseek-ai/dsh-client-ui-settings':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-settings
-        version: link:../../deepseek-harness/packages/client/ui-settings
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-settings
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-settings
       '@deepseek-ai/dsh-client-ui-sidebar':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-sidebar
-        version: link:../../deepseek-harness/packages/client/ui-sidebar
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-sidebar
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-sidebar-right
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-sidebar-right
       '@deepseek-ai/dsh-client-ui-slots':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-slots
-        version: link:../../deepseek-harness/packages/client/ui-slots
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-slots
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-slots
       '@deepseek-ai/dsh-client-ui-theme':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-theme
-        version: link:../../deepseek-harness/packages/client/ui-theme
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-theme
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-theme
       '@deepseek-ai/dsh-client-ui-trajectory':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-trajectory
-        version: link:../../deepseek-harness/packages/client/ui-trajectory
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-trajectory
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-trajectory
       '@deepseek-ai/dsh-client-ui-workspace':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/client/ui-workspace
-        version: link:../../deepseek-harness/packages/client/ui-workspace
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/ui-workspace
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/ui-workspace
       '@deepseek-ai/dsh-host-webserver':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/host/webserver
-        version: link:../../deepseek-harness/packages/host/webserver
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/host/webserver
+        version: link:../dsh-0.2.0-rc.2-src/packages/host/webserver
       '@deepseek-ai/dsh-invariants':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/runtime-diagnostics/invariants
-        version: link:../../deepseek-harness/packages/runtime-diagnostics/invariants
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/runtime-diagnostics/invariants
+        version: link:../dsh-0.2.0-rc.2-src/packages/runtime-diagnostics/invariants
       '@deepseek-ai/dsh-session':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/core/session
-        version: link:../../deepseek-harness/packages/core/session
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/core/session
+        version: link:../dsh-0.2.0-rc.2-src/packages/core/session
+      '@deepseek-ai/dsh-util-values':
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/util/values
+        version: link:../dsh-0.2.0-rc.2-src/packages/util/values
       '@deepseek-ai/dsh-workspace':
-        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/deepseek-harness/packages/workspace/workspace
-        version: link:../../deepseek-harness/packages/workspace/workspace
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/workspace/workspace
+        version: link:../dsh-0.2.0-rc.2-src/packages/workspace/workspace
       '@testing-library/react':
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1332,6 +1338,10 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
+    engines: {node: '>=0.10.0'}
+
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
@@ -2522,7 +2532,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.18
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   pretty-format@27.5.1:
     dependencies:
@@ -2609,6 +2619,8 @@ snapshots:
   siginfo@2.0.0: {}
 
   source-map-js@1.2.1: {}
+
+  source-map-js@1.2.2: {}
 
   stackback@0.0.2: {}
 

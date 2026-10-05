@@ -11,6 +11,7 @@ import { ThemeRuntime, type ThemeSettings } from '@deepseek-ai/dsh-client-ui-the
 import { apply, inject } from '../src/client/index.ts'
 
 const TrajectoryView = () => null
+const PACKAGE_NAME = '@aida/aida-ui-dsh'
 
 async function bench() {
   const ctx = new Context()
@@ -38,10 +39,17 @@ async function bench() {
     scope: vi.fn(() => ({ sessionId: 's1' as SessionId })),
   } as unknown as ISessions
   ctx.provide('sessions', sessions)
+  // The current-Session selection lives on the uiSession adapter in dsh 0.2.0.
+  ctx.provide('uiSession', {
+    adapter: { current: { getSnapshot: () => ({ key: 's1' }) } },
+  })
   const inputTriggers = { registerSource: vi.fn(() => () => {}) }
   ctx.provide('inputTriggers', inputTriggers)
-  const layout = { openDetails: vi.fn(), closeDetails: vi.fn() }
-  ctx.provide('layout', layout)
+  // The Canvas is a rightbar page tab: opened by kind, closed by tab actions.
+  const sidebarRight = { openTab: vi.fn(), close: vi.fn(), isExpanded: vi.fn(() => false), active: vi.fn(() => undefined) }
+  ctx.provide('sidebarRight', sidebarRight)
+  const sidebarRightTabs = { register: vi.fn(() => () => {}), get: vi.fn(() => undefined) }
+  ctx.provide('sidebarRightTabs', sidebarRightTabs)
   const conversation = {
     input: { for: vi.fn(() => ({
       setDraft: vi.fn(),
@@ -65,7 +73,7 @@ async function bench() {
       sidebar: { kind: 'single', scope: 'root' },
       conversation: { kind: 'single', scope: 'root' },
       settings: { kind: 'single', scope: 'root' },
-      details: { kind: 'single', scope: 'session' },
+      'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
       'shell.overlay': { kind: 'list', scope: 'root' },
     },
   } as never, () => null)
@@ -88,7 +96,7 @@ async function bench() {
     children: {
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
       'conversation.hero.brand.mark': { kind: 'single', scope: 'root' },
-      'conversation.chat.turnTail': { kind: 'chain', scope: 'session' },
+      'conversation.chat.turnTail': { kind: 'list', scope: 'session' },
       // The conversation body declares the view ring (ui-conversation apply);
       // AIDA's canvas redeclares the identical spec to share the seat.
       'conversation.view': { kind: 'list', scope: 'session' },
@@ -105,15 +113,12 @@ async function bench() {
       setActualDuration: vi.fn(),
     }),
   } as never, TrajectoryView)
-  // The built-in tool-details panel occupies the details seat at priority 0
-  // (AIDA's canvas shadows it at -1).
-  slots.register({ name: 'details' } as never, () => null)
-  return { ctx, slots, theme, workspaces, sessions, inputTriggers, layout, conversation, sessionLogDownload }
+  return { ctx, slots, theme, workspaces, sessions, inputTriggers, sidebarRight, sidebarRightTabs, conversation, sessionLogDownload }
 }
 
 describe('ui-aida apply', () => {
-  it('declares the presentation, workspace-file, sessions, remote, conversation, trigger, and layout services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale', 'theme', 'sessions', 'remote', 'conversation', 'inputTriggers', 'layout', 'sessionLogDownload'])
+  it('declares the presentation, workspace-file, sessions, remote, conversation, trigger, and right-sidebar services it uses', () => {
+    expect(inject).toEqual(['slots', 'locale', 'theme', 'sessions', 'uiSession', 'remote', 'conversation', 'inputTriggers', 'sidebarRight', 'sidebarRightTabs', 'sessionLogDownload'])
   })
 
   it('owns adaptive identity tokens and reversible brand + Canvas takeovers', async () => {
@@ -127,10 +132,11 @@ describe('ui-aida apply', () => {
     expect(b.slots.entries('sidebar.brand.mark')).toHaveLength(1)
     expect(b.slots.entries('sidebar.brand.name')).toHaveLength(1)
     expect(b.slots.entries('conversation.hero.brand.mark')).toHaveLength(1)
-    // The Canvas surface: the right-hand details column, the session-header
-    // toggle, and the turn-tail chips.
-    expect(b.slots.entries('details')).toHaveLength(2)
-    expect(b.slots.entries('details')[0]!.options.priority).toBe(-1)
+    // The Canvas tab type: one registry entry for the aida-canvas page kind,
+    // one keyed body under the type id, plus the header toggle and tail chips.
+    expect(b.sidebarRightTabs.register).toHaveBeenCalledWith(expect.objectContaining({ id: PACKAGE_NAME, kind: 'aida-canvas' }))
+    expect(b.slots.entries('sidebar.right.pane.tab')).toHaveLength(1)
+    expect(b.slots.entries('sidebar.right.pane.tab')[0]!.options.key).toBe(PACKAGE_NAME)
     expect(b.slots.entries('conversation.session.header.utilities')).toHaveLength(1)
     expect(b.slots.entries('conversation.chat.turnTail')).toHaveLength(1)
     // The intranet-models settings section.
@@ -148,9 +154,8 @@ describe('ui-aida apply', () => {
     expect(b.slots.entries('sidebar.brand.mark')).toHaveLength(0)
     expect(b.slots.entries('sidebar.brand.name')).toHaveLength(0)
     expect(b.slots.entries('conversation.hero.brand.mark')).toHaveLength(0)
-    // AIDA's canvas entry withdraws; the bench's fake built-in details entry
-    // (registered before the fiber) stays.
-    expect(b.slots.entries('details')).toHaveLength(1)
+    // AIDA's canvas body withdraws from the keyed pane seat.
+    expect(b.slots.entries('sidebar.right.pane.tab')).toHaveLength(0)
     expect(b.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
     expect(b.slots.entries('conversation.chat.turnTail')).toHaveLength(0)
     expect(b.slots.entries('settings.section')).toHaveLength(0)
@@ -161,17 +166,19 @@ describe('ui-aida apply', () => {
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
 
-    // The panel's inject face binds the workspace verbs, the column close,
-    // the original DSH trajectory view controls, and the composer actions.
-    const details = b.slots.entries('details').find(entry => entry.options.priority === -1)!
-    const injected = details.inject?.('s1' as SessionId) as {
+    // Applying the plugin opens the Canvas rightbar tab once, by kind.
+    expect(b.sidebarRight.openTab).toHaveBeenCalledWith('aida-canvas')
+
+    // The panel's inject face binds the workspace verbs, the original DSH
+    // trajectory view controls, and the composer actions.
+    const pane = b.slots.entries('sidebar.right.pane.tab').find(entry => entry.options.key === PACKAGE_NAME)!
+    const injected = pane.inject?.('s1' as SessionId) as {
       listFiles: (root: string, signal?: AbortSignal) => Promise<unknown>
       readFile: (root: string, path: string) => Promise<unknown>
       writeFile: (root: string, path: string, input: object) => Promise<unknown>
       renameFile: (root: string, path: string, nextName: string) => Promise<unknown>
       moveFile: (root: string, path: string, targetPath: string) => Promise<unknown>
       deleteFile: (root: string, path: string) => Promise<unknown>
-      closeCanvas: () => void
       loadTrajectoryOlder: () => Promise<boolean>
       setTrajectoryActualDuration: (value: boolean) => void
       trajectoryView: typeof TrajectoryView
@@ -192,23 +199,19 @@ describe('ui-aida apply', () => {
     expect(injected.renameFile).toEqual(expect.any(Function))
     expect(injected.moveFile).toEqual(expect.any(Function))
     expect(injected.deleteFile).toEqual(expect.any(Function))
-    expect(typeof injected.closeCanvas).toBe('function')
-    expect(b.layout.openDetails).toHaveBeenCalledTimes(1)
-    injected.closeCanvas()
-    expect(b.layout.closeDetails).toHaveBeenCalledTimes(1)
     injected.mentionFile('README.md')
     injected.quoteSelection('README.md', 'hello')
     expect(b.conversation.input.for).toHaveBeenCalled()
 
-    // The header toggle and the turn-tail chips open the column.
+    // The header toggle and the turn-tail chips open the same rightbar tab.
     const toggle = b.slots.entries('conversation.session.header.utilities')[0]!
     const toggleInjected = toggle.inject?.() as { openCanvas: () => void }
     toggleInjected.openCanvas()
-    expect(b.layout.openDetails).toHaveBeenCalledTimes(2)
+    expect(b.sidebarRight.openTab).toHaveBeenCalledTimes(2)
     const tail = b.slots.entries('conversation.chat.turnTail')[0]!
     const tailInjected = tail.inject?.() as { openCanvas: () => void }
     tailInjected.openCanvas()
-    expect(b.layout.openDetails).toHaveBeenCalledTimes(3)
+    expect(b.sidebarRight.openTab).toHaveBeenCalledTimes(3)
 
     // The intranet settings section binds its controller and label.
     const section = b.slots.entries('settings.section')[0]!

@@ -24,7 +24,9 @@ class ResizeObserverStub {
 }
 
 beforeEach(() => {
-  localStorage.clear()
+  // Node ≥25's localStorage needs --localstorage-file under vitest's jsdom;
+  // the tree owns no persisted state, so a best-effort clear is enough.
+  globalThis.localStorage?.clear?.()
   vi.stubGlobal('ResizeObserver', ResizeObserverStub)
   vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:fake'), revokeObjectURL: vi.fn() })
 })
@@ -287,10 +289,19 @@ describe('AIDA canvas tree rows', () => {
 
 describe('AIDA turn-tail chips', () => {
   /** Mount the chips with a fresh store and open spy. */
-  function mountTail(matched: readonly string[]) {
+  function mountTail(paths: readonly string[]) {
     const store = createAidaCanvasStore().create()
     const openCanvas = vi.fn()
-    const props = { matched, actions: store.actions, openCanvas, t } as unknown as ProducedTailProps
+    // dsh 0.2.0's turnTail is a list slot: the component runs the selection
+    // itself from the Turn's deliverables data.
+    const props = {
+      turn: { turn: 1, data: new Map([['deliverables', { produced: paths.map((path, index) => ({ path, seq: index + 1 })) }]]) },
+      seq: paths.length + 1,
+      openFile: vi.fn(),
+      actions: store.actions,
+      openCanvas,
+      t,
+    } as unknown as ProducedTailProps
     render(<ProducedTail {...props} />)
     return { store, openCanvas }
   }

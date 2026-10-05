@@ -27,6 +27,7 @@ import FolderUp from 'lucide-react/dist/esm/icons/folder-up.mjs'
 import PencilLine from 'lucide-react/dist/esm/icons/pencil-line.mjs'
 import Quote from 'lucide-react/dist/esm/icons/quote.mjs'
 import type { WorkspaceFileListing, WorkspaceFileNode, WorkspaceFileRead } from '../../workspace-protocol.ts'
+import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { NS } from '../locales.ts'
 import type { AidaCanvasInjected } from './contract.ts'
 import { createAidaCanvasStore } from './store.ts'
@@ -36,12 +37,13 @@ import { FilePreview } from './preview.tsx'
 import { formatOf, isSvgName } from './formats.ts'
 import css from './canvas.module.css'
 
-/** Full composed props of the details-column registration. */
+/** Full composed props of the rightbar tab-body registration. */
 export type AidaCanvasPanelProps =
-  & PropsRuntime<'details'>
+  & PropsRuntime<'sidebar.right.pane.tab'>
   & PropsStore<ReturnType<typeof createAidaCanvasStore>>
   & InjectFace<AidaCanvasInjected>
   & PropsLocale<typeof NS>
+  & { useTabInfo: UseSidebarRightTabInfo }
 
 /** Max bytes fetched for one text preview (mirrors the host text read cap). */
 const PREVIEW_MAX_BYTES = 512 * 1024
@@ -131,15 +133,17 @@ export function applyMaximizedGrid(panel: HTMLElement | null, maximized: boolean
   frame.style.setProperty('--aida-canvas-cols', `${sidebar}px 0px ${rest}px`)
 }
 
-/** Render the Canvas column for the current session (the frame's details track). */
+/** Render the Canvas column for the current session (the rightbar tab body). */
 export function AidaCanvasPanel(props: AidaCanvasPanelProps) {
   const {
-    useSession, useSessions, sessionId, useStore, actions, t,
-    listFiles, readFile, writeFile, renameFile, moveFile, deleteFile, closeCanvas,
+    useSession, useSessions, sessionId, useStore, actions, t, useTabInfo,
+    listFiles, readFile, writeFile, renameFile, moveFile, deleteFile,
     trajectoryView: TrajectoryView,
     useTrajectoryDuration, loadTrajectoryOlder, setTrajectoryActualDuration, trajectoryT, downloadSessionLog,
     mentionFile, quoteSelection,
   } = props
+  // The panel closes itself through the docking kit's tab actions.
+  const closeCanvas = (): void => { useTabInfo().tab.actions.close() }
   const snapshot = useSession(s => s)
   // The session hooks' types model a materialized session; a session-scoped
   // slot renders before one exists, so the runtime guards stay.

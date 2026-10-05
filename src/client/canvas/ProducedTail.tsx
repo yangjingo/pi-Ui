@@ -1,11 +1,12 @@
 /**
  * AIDA Canvas turn-tail chips: the produced-files row under a closing
- * assistant message. The chain selector reads the deliverables location data
+ * assistant message. The `conversation.chat.turnTail` slot is a list in
+ * dsh 0.2.0, so the component itself reads the deliverables location data
  * the ui-deliverables definition publishes (key 'deliverables' on the Turn
- * data map — the documented location-data channel), and the chips open the
- * file in the AIDA Canvas column instead of the Host's OS opener. When the
- * turn produced nothing the selector declines and the shipped row still
- * renders.
+ * data map — the documented location-data channel) and renders nothing when
+ * the turn produced nothing, letting the shipped row show instead. The chips
+ * open the file in the AIDA Canvas rightbar tab instead of the Host's OS
+ * opener.
  */
 
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
@@ -21,7 +22,7 @@ const SHOWN_LIMIT = 6
 
 /** Injected open affordance of the turn-tail chips. */
 export interface ProducedTailInjected {
-  /** Open the Canvas column (the frame's details track). */
+  /** Open the Canvas rightbar tab. */
   openCanvas: () => void
 }
 
@@ -40,16 +41,16 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
 /** Full composed props of the turn-tail registration. */
 export type ProducedTailProps =
   & PropsRuntime<'conversation.chat.turnTail'>
-  & Pick<TurnTailOwnerProps, 'turn' | 'seq'>
-  & { matched: readonly string[] }
+  & TurnTailOwnerProps
   & PropsStore<ReturnType<typeof createAidaCanvasStore>>
   & InjectFace<ProducedTailInjected>
   & PropsLocale<typeof NS>
 
 /**
- * Claim the turn-tail chain only when the closing turn produced files.
+ * Collect the produced paths of the closing turn, or null when it produced
+ * nothing (the component then renders nothing).
  * @param owner - Turn-tail owner currency for the closing assistant.
- * @returns Produced paths as the component's match, or null to decline.
+ * @returns Produced paths, or null when the turn produced no files.
  */
 export function selectAidaProducedFiles(owner: TurnTailOwnerProps): readonly string[] | null {
   const data = owner.turn.data.get('deliverables')
@@ -62,8 +63,10 @@ export function selectAidaProducedFiles(owner: TurnTailOwnerProps): readonly str
   return paths.length === 0 ? null : paths
 }
 
-/** Render the produced-files chips of one turn, opening into the Canvas column. */
-export function ProducedTail({ matched: paths, actions, openCanvas, t }: ProducedTailProps) {
+/** Render the produced-files chips of one turn, opening into the Canvas tab. */
+export function ProducedTail({ turn, seq, actions, openCanvas, t }: ProducedTailProps) {
+  const paths = selectAidaProducedFiles({ turn, seq, openFile: () => {} })
+  if (paths === null) return null
   const shown = paths.slice(0, SHOWN_LIMIT)
   const hidden = paths.length - shown.length
   return (

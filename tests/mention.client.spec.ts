@@ -60,8 +60,11 @@ function bench(options: { listing?: WorkspaceFileListing; read?: { path: string;
   }))
   const workspaces = { listFiles, readFile }
   const conversation = { input: { for: vi.fn(() => shell) } }
+  // The current-Session selection lives on the uiSession adapter in dsh 0.2.0.
+  const uiSession = { adapter: { current: { getSnapshot: () => ({ key: SID }) } } }
   const ctx = {
     sessions,
+    uiSession,
     workspaces,
     get: (name: string) => (name === 'conversation' ? conversation : undefined),
   } as unknown as ClientContext

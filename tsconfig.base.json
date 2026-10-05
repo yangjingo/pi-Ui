@@ -2,6 +2,11 @@
   // Standalone base for the aida-ui-dsh plugin checkout (the upstream
   // pi-Ui monorepo resolves this from its repository root; this copy keeps
   // the plugin self-contained outside that workspace).
+  //
+  // On the adapt/dsh-0.2.0-rc.2 branch the @deepseek-ai devDependencies in
+  // package.json link to the built dsh-v0.2.0-rc.2 worktree at
+  // ../dsh-0.2.0-rc.2-src (tag dsh-v0.2.0-rc.2 of deepseek-harness), so the
+  // plugin type-checks against the exact desktop runtime version.
   "compilerOptions": {
     "target": "es2024",
     "module": "esnext",

@@ -21,11 +21,19 @@ import { aidaWorkspaceApi } from '../workspace-api.ts'
 interface SessionsLike {
   readonly list: {
     getSnapshot(): {
-      current: SessionId | undefined
       byId: Readonly<Record<string, { cwd?: string | undefined }>>
     }
   }
   scope(sessionId: SessionId): ClientContext | undefined
+}
+
+/** The on-screen Session face (uiSession): the current session's selection moved there in dsh 0.2.0. */
+interface UiSessionLike {
+  readonly adapter: {
+    readonly current: {
+      getSnapshot(): { key: string | undefined }
+    }
+  }
 }
 
 /** Source name of the workspace-file '@' mention (renders as the menu group label). */
@@ -130,9 +138,11 @@ function currentComposer(ctx: ClientContext): { shell: ComposerShell; root: stri
   if (conversation === undefined) return undefined
   const sessions = (ctx as ClientContext & { sessions?: SessionsLike }).sessions
   if (sessions === undefined) return undefined
-  const state = sessions.list.getSnapshot()
-  const sessionId = state.current
+  const uiSession = (ctx as ClientContext & { uiSession?: UiSessionLike }).uiSession
+  if (uiSession === undefined) return undefined
+  const sessionId = uiSession.adapter.current.getSnapshot().key as SessionId | undefined
   if (sessionId === undefined) return undefined
+  const state = sessions.list.getSnapshot()
   const root = state.byId[sessionId]?.cwd
   if (root === undefined) return undefined
   const actx = sessions.scope(sessionId)
