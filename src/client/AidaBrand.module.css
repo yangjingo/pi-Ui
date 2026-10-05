@@ -135,3 +135,29 @@ body[data-ds-dark-theme] .body {
 body[data-ds-dark-theme] .accent {
   fill: var(--aida-logo-accent);
 }
+
+/* ── dsh 0.2.0-rc.2: the platform paints opaque columns on the Windows
+   titlebar layout (`[data-windows-titlebar] .centerCol`, `.rightbarCol`
+   occupants). Transparent them so the frame-level atmosphere (the whale
+   artwork above) stays visible in the conversation and Canvas areas, as it
+   already is in the sidebar. */
+:global([data-windows-titlebar] [class*='_centerCol']),
+:global([data-windows-titlebar] [class*='_rightbarCol']) {
+  background: transparent !important;
+}
+
+/* The rightbar occupant anchors its own panel; let the Canvas panel's own
+   translucent glass show the atmosphere instead of a base fill. */
+:global([data-windows-titlebar] [class*='_rightbarCol'] > div),
+:global([data-windows-titlebar] [class*='_rightbarCol'] > div > div) {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Windows caption strip: the sidebar-fill band stays (window chrome), but the
+   frame ground under the atmosphere keeps the base token so the artwork's
+   linear gradient reads consistently. */
+:global([data-windows-titlebar] #root > div > div) {
+  background-color: var(--dsw-alias-bg-base) !important;
+  background-image: none !important;
+}
