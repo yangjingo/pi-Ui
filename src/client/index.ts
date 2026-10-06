@@ -22,7 +22,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { AidaSidebarBrand, AidaSidebarMark } from './AidaBrand.tsx'
 import { AidaHeroBrand } from './AidaHeroBrand.tsx'
 import { AidaCanvasPanel } from './canvas/CanvasPanel.tsx'
-import { AidaCanvasToggle, type CanvasToggleInjected } from './canvas/CanvasToggle.tsx'
 import { ProducedTail } from './canvas/ProducedTail.tsx'
 import { createAidaCanvasStore } from './canvas/store.ts'
 import type { AidaCanvasInjected } from './canvas/contract.ts'
@@ -104,17 +103,19 @@ export function apply(ctx: ClientContext): void {
     priority: -1,
     locale: NS,
   }, AidaHeroBrand))
-  // ── Canvas: right-hand column, header toggle, and turn-tail chips ────────
-  // One shared per-session store handle mounts under the three session-scoped
-  // registrations (rightbar tab body, header utilities, turn tail), so opening a
-  // produced file from the chat tail lands in the column. The column is the
-  // right Sidebar's docking kit: the Canvas registers a page tab type
-  // (`aida-canvas`) whose body is the panel in the keyed `sidebar.right.pane.tab`
-  // seat, opens through `ctx.sidebarRight.openTab`, and closes through the tab's
-  // own actions (the panel reads them from its `useTabInfo` hook).
+  // ── Canvas: rightbar tab and turn-tail chips ────────────────────────────
+  // One shared per-session store handle mounts under the two session-scoped
+  // registrations (rightbar tab body, turn tail), so opening a produced file
+  // from the chat tail lands in the column. The column is the right Sidebar's
+  // docking kit: the Canvas registers a page tab type (`aida-canvas`) whose
+  // body is the panel in the keyed `sidebar.right.pane.tab` seat, opens
+  // through the kit's own affordances (guide entry, expand button), and
+  // closes through the tab's own actions (the panel reads them from its
+  // `useTabInfo` hook). No custom header toggle is registered: 0.2.0's
+  // ui-sidebar-right already puts its ExpandButton in the session header's
+  // corner seat, and a second button there fights it for the same gesture.
   const canvasStore = createAidaCanvasStore()
   const t = ctx.locale.bind(NS)
-  const openCanvas = (): void => { ctx.sidebarRight.openTab('aida-canvas') }
 
   const canvasInjected = (sessionId: SessionId): AidaCanvasInjected => {
     const trajectoryEntry = ctx.slots.entries('conversation.view')
@@ -144,11 +145,19 @@ export function apply(ctx: ClientContext): void {
   }
 
   // Stage one: the tab type. No `patterns`, so nothing claims it by address —
-  // it is opened explicitly by kind (header toggle, tail chips).
+  // it opens explicitly by kind. The guide entry puts the Canvas on the right
+  // Sidebar's guide page, which is the kit's native discovery surface; picking
+  // it opens the tab.
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: PACKAGE_NAME,
     kind: 'aida-canvas',
     title: () => t('canvas.title'),
+    guide: [{
+      id: 'aida-canvas',
+      order: 100,
+      title: () => t('canvas.guideTitle'),
+      description: () => t('canvas.guideDescription'),
+    }],
   }), 'ui-aida: canvas tab type')
 
   // Stage two: the body under the type's id in the keyed pane seat.
@@ -159,28 +168,6 @@ export function apply(ctx: ClientContext): void {
     store: canvasStore,
     inject: canvasInjected,
   }, AidaCanvasPanel))
-
-  // Canvas is AIDA's primary workspace surface. Plugin loading can finish
-  // before DSH wires the right Sidebar services, so retry briefly until the
-  // tab type is registered instead of failing the whole plugin entry.
-  const openCanvasWhenReady = (attempt = 0): void => {
-    try {
-      openCanvas()
-    } catch {
-      if (attempt < 20) {
-        globalThis.setTimeout(() => openCanvasWhenReady(attempt + 1), 50)
-      }
-    }
-  }
-  openCanvasWhenReady()
-
-  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-    name: 'conversation.session.header.utilities',
-    id: 'aida-canvas',
-    order: 100,
-    locale: NS,
-    inject: (): CanvasToggleInjected => ({ openCanvas }),
-  }, AidaCanvasToggle))
 
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
     name: 'conversation.chat.turnTail',

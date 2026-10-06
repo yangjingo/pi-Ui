@@ -21,7 +21,6 @@ import { basename, bytesToBase64, countFiles, filterFileTree, listFiles } from '
 import { codeLangOf, formatOf } from '../src/client/canvas/formats.ts'
 import { producedPathsOf, AidaCanvasPanel, applyMaximizedGrid } from '../src/client/canvas/CanvasPanel.tsx'
 import { FILE_DRAG_TYPE } from '../src/client/canvas/FileTree.tsx'
-import { AidaCanvasToggle } from '../src/client/canvas/CanvasToggle.tsx'
 import { selectAidaProducedFiles } from '../src/client/canvas/ProducedTail.tsx'
 import type { AidaCanvasPanelProps } from '../src/client/canvas/CanvasPanel.tsx'
 
@@ -354,34 +353,6 @@ describe('AIDA turn-tail selector', () => {
     }
     expect(selectAidaProducedFiles(owner as never)).toEqual(['a.txt'])
     expect(selectAidaProducedFiles({ ...owner, turn: { turn: 1, data: new Map() } } as never)).toBeNull()
-  })
-})
-
-describe('AIDA canvas toggle', () => {
-  it('renders the logo-row style icon button (no text label) and opens the column on click', () => {
-    const openCanvas = vi.fn()
-    render(
-      <AidaCanvasToggle
-        useSessions={(() => undefined) as never}
-        useSession={(() => undefined) as never}
-        useProjection={(() => undefined)}
-        useInput={(() => ({ draft: '', draftRev: 0 })) as never}
-        inputActions={{ setDraft: vi.fn(), addImages: vi.fn(), removeImage: vi.fn(), pruneImages: vi.fn(), submit: vi.fn() }}
-        useWorkspaces={(() => undefined) as never}
-        sessionId={SID}
-        openCanvas={openCanvas}
-        t={t}
-      />,
-    )
-    const button = screen.getByTestId('aida-canvas-toggle')
-    // Icon-only: the label rides aria/tooltip, not visible text.
-    expect(button.textContent).toBe('')
-    expect(button.getAttribute('aria-label')).toBe('画布')
-    // The glyph describes opening the framework's right-hand details panel.
-    expect(button.querySelector('svg')?.getAttribute('class')).toContain('lucide-panel-right-open')
-    expect(button.querySelector('svg')?.getAttribute('width')).toBe('16')
-    fireEvent.click(button)
-    expect(openCanvas).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -132,12 +132,18 @@ describe('ui-aida apply', () => {
     expect(b.slots.entries('sidebar.brand.mark')).toHaveLength(1)
     expect(b.slots.entries('sidebar.brand.name')).toHaveLength(1)
     expect(b.slots.entries('conversation.hero.brand.mark')).toHaveLength(1)
-    // The Canvas tab type: one registry entry for the aida-canvas page kind,
-    // one keyed body under the type id, plus the header toggle and tail chips.
-    expect(b.sidebarRightTabs.register).toHaveBeenCalledWith(expect.objectContaining({ id: PACKAGE_NAME, kind: 'aida-canvas' }))
+    // The Canvas tab type: one registry entry for the aida-canvas page kind
+    // with its native guide entry, one keyed body under the type id, plus the
+    // tail chips. No custom header toggle is registered — 0.2.0's ui-sidebar-right
+    // already owns the corner expand button, and a second one fights it.
+    expect(b.sidebarRightTabs.register).toHaveBeenCalledWith(expect.objectContaining({
+      id: PACKAGE_NAME,
+      kind: 'aida-canvas',
+      guide: [expect.objectContaining({ id: 'aida-canvas', title: expect.any(Function) })],
+    }))
     expect(b.slots.entries('sidebar.right.pane.tab')).toHaveLength(1)
     expect(b.slots.entries('sidebar.right.pane.tab')[0]!.options.key).toBe(PACKAGE_NAME)
-    expect(b.slots.entries('conversation.session.header.utilities')).toHaveLength(1)
+    expect(b.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
     expect(b.slots.entries('conversation.chat.turnTail')).toHaveLength(1)
     // The intranet-models settings section.
     expect(b.slots.entries('settings.section')).toHaveLength(1)
@@ -166,8 +172,10 @@ describe('ui-aida apply', () => {
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
 
-    // Applying the plugin opens the Canvas rightbar tab once, by kind.
-    expect(b.sidebarRight.openTab).toHaveBeenCalledWith('aida-canvas')
+    // Applying the plugin does not open the tab: the Canvas is discovered
+    // through the kit's guide entry and the native expand button, matching
+    // the right Sidebar's own persistence instead of forcing a layout.
+    expect(b.sidebarRight.openTab).not.toHaveBeenCalled()
 
     // The panel's inject face binds the workspace verbs, the original DSH
     // trajectory view controls, and the composer actions.
@@ -203,14 +211,11 @@ describe('ui-aida apply', () => {
     injected.quoteSelection('README.md', 'hello')
     expect(b.conversation.input.for).toHaveBeenCalled()
 
-    // The header toggle opens the same rightbar tab; the tail chips keep the
-    // Host's native open linkage, so they carry no injected open face.
-    const toggle = b.slots.entries('conversation.session.header.utilities')[0]!
-    const toggleInjected = toggle.inject?.() as { openCanvas: () => void }
-    toggleInjected.openCanvas()
-    expect(b.sidebarRight.openTab).toHaveBeenCalledTimes(2)
+    // The tail chips keep the Host's native open linkage, so they carry no
+    // injected open face; the session header stays native (no AIDA toggle).
     const tail = b.slots.entries('conversation.chat.turnTail')[0]!
     expect(tail.inject).toBeUndefined()
+    expect(b.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
 
     // The intranet settings section binds its controller and label.
     const section = b.slots.entries('settings.section')[0]!
