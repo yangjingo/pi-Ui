@@ -50,6 +50,8 @@ async function bench() {
   ctx.provide('sidebarRight', sidebarRight)
   const sidebarRightTabs = { register: vi.fn(() => () => {}), get: vi.fn(() => undefined) }
   ctx.provide('sidebarRightTabs', sidebarRightTabs)
+  const shortcuts = { register: vi.fn(() => () => {}) }
+  ctx.provide('shortcuts', shortcuts)
   const conversation = {
     input: { for: vi.fn(() => ({
       setDraft: vi.fn(),
@@ -113,12 +115,12 @@ async function bench() {
       setActualDuration: vi.fn(),
     }),
   } as never, TrajectoryView)
-  return { ctx, slots, theme, workspaces, sessions, inputTriggers, sidebarRight, sidebarRightTabs, conversation, sessionLogDownload }
+  return { ctx, slots, theme, workspaces, sessions, inputTriggers, sidebarRight, sidebarRightTabs, shortcuts, conversation, sessionLogDownload }
 }
 
 describe('ui-aida apply', () => {
   it('declares the presentation, workspace-file, sessions, remote, conversation, trigger, and right-sidebar services it uses', () => {
-    expect(inject).toEqual(['slots', 'locale', 'theme', 'sessions', 'uiSession', 'remote', 'conversation', 'inputTriggers', 'sidebarRight', 'sidebarRightTabs', 'sessionLogDownload'])
+    expect(inject).toEqual(['slots', 'locale', 'theme', 'sessions', 'uiSession', 'remote', 'conversation', 'inputTriggers', 'sidebarRight', 'sidebarRightTabs', 'shortcuts', 'sessionLogDownload'])
   })
 
   it('owns adaptive identity tokens and reversible brand + Canvas takeovers', async () => {
@@ -145,6 +147,11 @@ describe('ui-aida apply', () => {
     expect(b.slots.entries('sidebar.right.pane.tab')[0]!.options.key).toBe(PACKAGE_NAME)
     expect(b.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
     expect(b.slots.entries('conversation.chat.turnTail')).toHaveLength(1)
+    // The Canvas toggle shortcut registers with the shortcut service.
+    expect(b.shortcuts.register).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'aida.canvas.toggle',
+      defaults: expect.objectContaining({ 'desktop:windows': { code: 'KeyK', modifiers: ['primary', 'alt'] } }),
+    }))
     // The intranet-models settings section.
     expect(b.slots.entries('settings.section')).toHaveLength(1)
     // The workspace-file '@' mention source registers with the trigger service.

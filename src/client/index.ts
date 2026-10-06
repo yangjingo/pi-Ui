@@ -7,6 +7,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -51,7 +52,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** Services required by the AIDA browser skin, Canvas, and intranet models. */
-export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiSession', 'remote', 'conversation', 'inputTriggers', 'sidebarRight', 'sidebarRightTabs', 'sessionLogDownload']
+export const inject = ['slots', 'locale', 'theme', 'sessions', 'uiSession', 'remote', 'conversation', 'inputTriggers', 'sidebarRight', 'sidebarRightTabs', 'shortcuts', 'sessionLogDownload']
 
 const PACKAGE_NAME = '@aida/aida-ui-dsh'
 
@@ -168,6 +169,34 @@ export function apply(ctx: ClientContext): void {
     store: canvasStore,
     inject: canvasInjected,
   }, AidaCanvasPanel))
+
+  // Canvas shortcut: one toggle gesture over the page type the guide entry
+  // opens. When the active tab is the Canvas it closes it; otherwise it opens
+  // (and focuses) the Canvas tab in the on-screen Session's right Sidebar.
+  ctx.effect(() => ctx.shortcuts.register({
+    id: 'aida.canvas.toggle' as ShortcutCommandId,
+    label: () => t('canvas.shortcut'),
+    aliases: ['canvas', 'aida'],
+    defaults: {
+      'desktop:macos': { code: 'KeyK', modifiers: ['primary', 'alt'] },
+      'desktop:windows': { code: 'KeyK', modifiers: ['primary', 'alt'] },
+      'desktop:linux': { code: 'KeyK', modifiers: ['primary', 'alt'] },
+      'web:macos': { code: 'KeyK', modifiers: ['primary', 'shift'] },
+      'web:windows': { code: 'KeyK', modifiers: ['primary', 'shift'] },
+    },
+    regions: ['page', 'editable', 'terminal'],
+    modals: [],
+    resolve: () => {
+      if (ctx.sidebarRight.mounted.getSnapshot() === undefined) {
+        return { status: 'blocked', reason: t('canvas.shortcutNoSession') }
+      }
+      const active = ctx.sidebarRight.active()
+      if (active !== undefined && active.kind === 'aida-canvas') {
+        return { status: 'handled', run: () => { ctx.sidebarRight.close(active.id) } }
+      }
+      return { status: 'handled', run: () => { ctx.sidebarRight.openTab('aida-canvas') } }
+    },
+  }), 'ui-aida: canvas shortcut')
 
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register({
     name: 'conversation.chat.turnTail',

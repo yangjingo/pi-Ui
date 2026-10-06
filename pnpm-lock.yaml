@@ -39,6 +39,9 @@ importers:
       '@deepseek-ai/dsh-client-locale':
         specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/locale
         version: link:../dsh-0.2.0-rc.2-src/packages/client/locale
+      '@deepseek-ai/dsh-client-shortcuts':
+        specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/shortcuts
+        version: link:../dsh-0.2.0-rc.2-src/packages/client/shortcuts
       '@deepseek-ai/dsh-client-store':
         specifier: link:C:/Users/y00842095/Desktop/agent/aidaNext/aida-dsh/dsh-0.2.0-rc.2-src/packages/client/store
         version: link:../dsh-0.2.0-rc.2-src/packages/client/store
