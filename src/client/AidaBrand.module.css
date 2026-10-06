@@ -153,10 +153,13 @@ body[data-ds-dark-theme] .accent {
   background: transparent !important;
 }
 
-/* dsh 0.2.0's conversation root paints an opaque base fill (ConversationRoot
-   `.root`). The slot outlet's stable data-slot address is the precise,
-   hash-free anchor: transparent it so the whale shows behind the session. */
-:global([data-slot='conversation.session']) {
+/* dsh 0.2.0's conversation skeleton paints an opaque base fill
+   (ConversationMainPanel `.root`, the element carrying data-phase inside the
+   `conversation.session` slot wrapper — the wrapper itself is
+   display:contents and paints nothing). Anchor on the wrapper's phased child
+   so the whale shows behind the session, exactly as it already does behind
+   main-panel plugin pages. */
+:global([data-slot='conversation.session'] > [data-phase]) {
   background: transparent !important;
 }
 
