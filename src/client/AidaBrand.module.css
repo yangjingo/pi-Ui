@@ -16,21 +16,21 @@
   display: block;
 }
 
-/* AIDA atmosphere layer. The frame owns the full-viewport artwork while
-   functional columns keep translucent semantic surfaces above it. */
+/* AIDA atmosphere layer. The whale artwork paints on a fixed body layer that
+   sits behind the whole application; the app frame stays transparent so every
+   functional column (sidebar, conversation, Canvas) sees it through its own
+   translucent surfaces. The frame's own ::before is left to the platform —
+   on the Windows titlebar layout it is the caption drag band, and claiming
+   that pseudo-element squashes the artwork into a titlebar-height strip. */
 :global(body) {
   background-color: var(--dsw-alias-bg-base);
 }
 
-:global(#root > div > div) {
-  background-color: var(--dsw-alias-bg-base) !important;
-  background-image: none !important;
-}
-
-:global(#root > div > div::before) {
+:global(body::before) {
   content: '';
-  position: absolute;
+  position: fixed;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
   background:
     url('/aida-ui-assets/aida-background-v2.png?v=4'),
@@ -43,6 +43,13 @@
   background-size: cover, 100vw 100vh, 100vw 100vh, 100vw 100vh, 100vw 100vh;
   filter: contrast(1.06) saturate(0.92);
   opacity: 0.76;
+}
+
+/* The application frame paints nothing: the body layer is the ground. */
+:global(#root),
+:global(#root > div),
+:global(#root > div > div) {
+  background: transparent !important;
 }
 
 /* English new-session identity: the host title supplies AIDA; this second
@@ -119,11 +126,11 @@
   user-select: none !important;
 }
 
-:global(body[data-ds-dark-theme] #root > div > div) {
-  background-color: var(--dsw-alias-bg-base) !important;
+:global(body[data-ds-dark-theme]) {
+  background-color: var(--dsw-alias-bg-base);
 }
 
-:global(body[data-ds-dark-theme] #root > div > div::before) {
+:global(body[data-ds-dark-theme]::before) {
   filter: saturate(0.7) brightness(0.5);
   opacity: 0.24;
 }
@@ -138,7 +145,7 @@ body[data-ds-dark-theme] .accent {
 
 /* ── dsh 0.2.0-rc.2: the platform paints opaque columns on the Windows
    titlebar layout (`[data-windows-titlebar] .centerCol`, `.rightbarCol`
-   occupants). Transparent them so the frame-level atmosphere (the whale
+   occupants). Transparent them so the body-level atmosphere (the whale
    artwork above) stays visible in the conversation and Canvas areas, as it
    already is in the sidebar. */
 :global([data-windows-titlebar] [class*='_centerCol']),
@@ -151,13 +158,5 @@ body[data-ds-dark-theme] .accent {
 :global([data-windows-titlebar] [class*='_rightbarCol'] > div),
 :global([data-windows-titlebar] [class*='_rightbarCol'] > div > div) {
   background-color: transparent !important;
-  background-image: none !important;
-}
-
-/* Windows caption strip: the sidebar-fill band stays (window chrome), but the
-   frame ground under the atmosphere keeps the base token so the artwork's
-   linear gradient reads consistently. */
-:global([data-windows-titlebar] #root > div > div) {
-  background-color: var(--dsw-alias-bg-base) !important;
   background-image: none !important;
 }
